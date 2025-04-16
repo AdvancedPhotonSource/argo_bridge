@@ -55,6 +55,9 @@ MODEL_MAPPING = {
     'o3-mini': 'gpto3mini',
     'o3mini': 'gpto3mini',
     'gpto3mini': 'gpto3mini',
+
+    'gpto1': 'gpto1',
+    'o1': 'gpto1',
 }
 
 EMBEDDING_MODEL_MAPPING = {
@@ -95,7 +98,8 @@ MODEL_ENV = {
     
     # Models using development environment
     'gpto3mini': 'dev',
-    'gpto1mini': 'dev'
+    'gpto1mini': 'dev',
+    'gpto1': 'dev'
 }
 
 # Default embedding environment
