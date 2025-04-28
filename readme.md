@@ -2,6 +2,12 @@
 
 This project provides a compatibility layer that transforms OpenAI-style API requests into Argonne National Lab's Argo API format. It supports chat completions, text completions, and embeddings endpoints.
 
+
+## Downstream Integration
+
+Several tools have been tested with the bridge, including IDE integrations, web UI's, and python libraries. Setup guides for these tools tools are located in the [downstream_config.md](downstream_config.md). 
+
+
 ## Setup
 
 ### 1. Create Conda Environment

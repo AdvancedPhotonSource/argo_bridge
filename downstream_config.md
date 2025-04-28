@@ -44,3 +44,27 @@ URL: https://github.com/open-webui/open-webui
 5. In key put in APS
 6. Leave prefix ID blank
 7. In model IDs add any model ids you wish to use.
+
+
+# Langchain/Langgraph
+
+URL: https://github.com/langchain-ai/langchain
+
+For langchain, set the model name, then the `openai_api_base` to the bridge server
+
+```py
+ChatOpenAI(
+    model_name='o3mini', 
+    temperature=0, 
+    openai_api_base='http://localhost:7285'
+)
+```
+
+For embedding, use `tiktoken_enabled=False` to disable tokenization before the text is sent to the API. 
+```py
+OpenAIEmbeddings(
+    model="text-embedding-3-large",
+    tiktoken_enabled=False,
+    openai_api_base='http://localhost:7285'
+)
+```
