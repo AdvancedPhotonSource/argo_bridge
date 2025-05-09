@@ -44,6 +44,9 @@ MODEL_MAPPING = {
     'gpt-4o': 'gpt4o',
     'gpt4o': 'gpt4o',
     'gpt-4o-mini': 'gpt4o',
+    
+    'gpt4olatest': 'gpt4olatest',
+    'gpt-4o-latest': 'gpt4olatest',
 
     'gpto1preview': 'gpto1preview',
     'o1-preview': 'gpto1preview',
@@ -94,6 +97,7 @@ MODEL_ENV = {
     'gpt4large': 'prod',
     'gpt4turbo': 'prod',
     'gpt4o': 'prod',
+    'gpt4olatest': 'prod',
     'gpto1preview': 'prod',
     
     # Models using development environment
