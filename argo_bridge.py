@@ -8,6 +8,47 @@ import logging
 import argparse
 from flask_cors import CORS  # Add this import
 import httpx
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST, multiprocess, CollectorRegistry
+from functools import wraps
+
+# This ensures metrics work correctly with multiple Gunicorn workers
+os.environ.setdefault('PROMETHEUS_MULTIPROC_DIR', 'metrics')
+
+# Initialize Prometheus metrics - just the essentials
+REQUEST_COUNT = Counter('argo_requests_total', 'Total API requests', ['endpoint', 'model', 'status'])
+REQUEST_LATENCY = Histogram('argo_request_latency_seconds', 'API request latency', ['endpoint', 'model'])
+
+def track_metrics(endpoint_name):
+    """Decorator to track metrics for API endpoints"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Extract model from request
+            data = request.get_json(silent=True) or {}
+            model = data.get('model', DEFAULT_MODEL) if data else None
+            
+            # Start timing
+            start_time = time.time()
+            
+            try:
+                # Execute the endpoint function
+                response = func(*args, **kwargs)
+                
+                # Record metrics after successful execution
+                status = response[1] if isinstance(response, tuple) else response.status_code if hasattr(response, 'status_code') else 200
+                REQUEST_COUNT.labels(endpoint=endpoint_name, model=model, status=status).inc()
+                REQUEST_LATENCY.labels(endpoint=endpoint_name, model=model).observe(time.time() - start_time)
+                
+                return response
+            except Exception as e:
+                # Record failure metrics
+                REQUEST_COUNT.labels(endpoint=endpoint_name, model=model, status=500).inc()
+                REQUEST_LATENCY.labels(endpoint=endpoint_name, model=model).observe(time.time() - start_time)
+                # Re-raise the exception
+                raise e
+                
+        return wrapper
+    return decorator
 
 app = Flask(__name__)
 CORS(app, 
@@ -17,12 +58,14 @@ CORS(app,
      methods=["POST", "OPTIONS"],
      supports_credentials=True)
 
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     response.headers.add('Access-Control-Allow-Credentials', 'true')
+
     return response
 
 
@@ -161,6 +204,7 @@ def get_api_url(model, endpoint_type):
 @app.route('/chat/completions', methods=['POST'])
 @app.route('/api/chat/completions', methods=['POST'])
 @app.route('/v1/chat/completions', methods=['POST']) #LMStudio Compatibility
+@track_metrics('chat_completions')
 def chat_completions():
     logging.info("Received chat completions request")
 
@@ -285,6 +329,7 @@ def _static_chat_response(text, model):
 
 @app.route('/completions', methods=['POST'])
 @app.route('/v1/completions', methods=['POST', 'OPTIONS']) #LMStudio Compatibility
+@track_metrics('completions')
 def completions():
     logging.info("Received completions request")
     data = request.get_json()
@@ -368,6 +413,7 @@ def _stream_completions_response(text, model):
 """
 @app.route('/embeddings', methods=['POST'])
 @app.route('/v1/embeddings', methods=['POST'])
+@track_metrics('embeddings')
 def embeddings():
     logging.info("Recieved embeddings request")
     data = request.get_json()
@@ -440,6 +486,7 @@ def _get_embeddings_from_argo(texts, model):
 """
 @app.route('/models', methods=['GET'])
 @app.route('/v1/models', methods=['GET'])
+@track_metrics('models')
 def models_list():
     logging.info("Received models list request")
     return jsonify(MODELS)
@@ -481,6 +528,24 @@ def check_argo_connection():
     
     return all_successful
 
+
+"""
+=================================
+    Metrics Endpoint
+=================================
+"""
+@app.route('/metrics', methods=['GET'])
+def metrics():
+    """Expose Prometheus metrics"""
+    allowed_ips = ['127.0.0.1', '::1']  # IPv4 and IPv6 localhost
+    
+    client_ip = request.remote_addr
+    if client_ip not in allowed_ips:
+        return Response("Access denied", status=403)
+
+    registry = CollectorRegistry()
+    multiprocess.MultiProcessCollector(registry)
+    return Response(generate_latest(registry), mimetype=CONTENT_TYPE_LATEST)
 
 """
 =================================
