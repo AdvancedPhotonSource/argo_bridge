@@ -63,6 +63,7 @@ MODEL_MAPPING = {
     'o1': 'gpto1',
 }
 
+
 EMBEDDING_MODEL_MAPPING = {
     'text-embedding-3-small': 'v3small',
     'v3small': 'v3small',
@@ -105,6 +106,22 @@ MODEL_ENV = {
     'gpto1mini': 'dev',
     'gpto1': 'dev'
 }
+
+# For models endpoint
+MODELS = {
+    "object": "list", 
+    "data": []
+}
+
+for model in MODEL_MAPPING.keys():
+    MODELS["data"].append({
+            "id": model,
+            "object": "model",
+            "created": int(datetime.datetime.now().timestamp()),
+            "owned_by": "system"
+    })
+
+
 
 # Default embedding environment
 EMBED_ENV = 'prod'
@@ -415,6 +432,18 @@ def _get_embeddings_from_argo(texts, model):
         all_embeddings.extend(batch_embeddings)
     
     return all_embeddings
+
+"""
+=================================
+    Models Endpoint
+=================================
+"""
+@app.route('/models', methods=['GET'])
+@app.route('/v1/models', methods=['GET'])
+def models_list():
+    logging.info("Received models list request")
+    return jsonify(MODELS)
+
 
 def check_argo_connection():
     """
