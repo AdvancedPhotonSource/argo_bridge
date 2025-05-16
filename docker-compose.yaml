@@ -1,15 +1,11 @@
-version: '3'
-
 services:
   argo_bridge:
     build: .
     ports:
       - "80:80"
     restart: unless-stopped
-    # Add any environment variables your app needs
-    # environment:
-    #   - API_KEY=your_key
-    #   - DEBUG=false
+    environment:
+      - METRICS_TOKEN=${METRICS_TOKEN:-default_secret_token}
 
   prometheus:
     image: prom/prometheus:latest
@@ -19,6 +15,8 @@ services:
     ports:
       - "127.0.0.1:9090:9090"
     restart: unless-stopped
+    environment:
+      - METRICS_TOKEN=${METRICS_TOKEN:-default_secret_token}
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -31,12 +29,17 @@ services:
     image: grafana/grafana:latest
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     ports:
       - "127.0.0.1:3000:3000"
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin_password  # Change this!
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
     depends_on:
       - prometheus
 

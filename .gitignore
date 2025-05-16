@@ -1,3 +1,4 @@
 log_bridge.log
 __pycache__
 metrics
+.env
