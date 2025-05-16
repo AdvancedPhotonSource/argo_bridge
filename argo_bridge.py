@@ -38,6 +38,7 @@ def track_metrics(endpoint_name):
                 status = response[1] if isinstance(response, tuple) else response.status_code if hasattr(response, 'status_code') else 200
                 REQUEST_COUNT.labels(endpoint=endpoint_name, model=model, status=status).inc()
                 REQUEST_LATENCY.labels(endpoint=endpoint_name, model=model).observe(time.time() - start_time)
+                print('collected data', flush=True)
                 
                 return response
             except Exception as e:
@@ -534,14 +535,15 @@ def check_argo_connection():
     Metrics Endpoint
 =================================
 """
+
 @app.route('/metrics', methods=['GET'])
 def metrics():
-    """Expose Prometheus metrics"""
-    allowed_ips = ['127.0.0.1', '::1']  # IPv4 and IPv6 localhost
+    metrics_token = os.environ.get('METRICS_TOKEN', 'default_secret_token')
     
-    client_ip = request.remote_addr
-    if client_ip not in allowed_ips:
-        return Response("Access denied", status=403)
+    # Check for auth token in header
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or auth_header != f'Bearer {metrics_token}':
+        return Response("Access denied: Invalid or missing token", status=403)
 
     registry = CollectorRegistry()
     multiprocess.MultiProcessCollector(registry)
