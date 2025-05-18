@@ -1,2 +1,7 @@
 log_bridge.log
 __pycache__
+metrics
+.env
+prometheus.yml
+myserver.crt
+myserver.key

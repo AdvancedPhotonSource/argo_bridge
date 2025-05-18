@@ -8,6 +8,8 @@ import logging
 import argparse
 from flask_cors import CORS  # Add this import
 import httpx
+from functools import wraps
+
 
 app = Flask(__name__)
 CORS(app, 
@@ -17,12 +19,14 @@ CORS(app,
      methods=["POST", "OPTIONS"],
      supports_credentials=True)
 
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     response.headers.add('Access-Control-Allow-Credentials', 'true')
+
     return response
 
 
@@ -194,6 +198,7 @@ def chat_completions():
         return Response(_stream_chat_response(model, req_obj), mimetype='text/event-stream')
     else:
         response = requests.post(get_api_url(model, 'chat'), json=req_obj)
+        
         if not response.ok:
             logging.error(f"Internal API error: {response.status_code} {response.reason}")
             return jsonify({"error": {
@@ -490,7 +495,7 @@ def check_argo_connection():
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run the Flask server.')
-    parser.add_argument('--username', type=str, default='APS', help='Username for the API requests')
+    parser.add_argument('--username', type=str, default='argo_bridge', help='Username for the API requests')
     parser.add_argument('--port', type=int, default=7285, help='Port number to run the server on')
     parser.add_argument('--dlog', action='store_true', help='Enable debug-level logging')
     return parser.parse_args()
@@ -498,7 +503,6 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    
     debug_enabled = args.dlog
     logging.basicConfig(
         filename=ANL_DEBUG_FP, 

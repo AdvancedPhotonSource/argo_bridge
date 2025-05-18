@@ -80,10 +80,40 @@ The server accepts both Argo and OpenAI model identifiers.
 - ada002: (`text-embedding-ada-002`, `ada002`)
 
 ## Production Deployment
-For personal use, the development server should be plenty, but if you wish to scale up gunicorn is included in the requirements. 
+For personal use, the development server should be plenty, but if you wish to scale up, this project includes a `docker-compose.yaml` file to manage the following services:
+
+- **argo_bridge**: The main application container, built using the provided `dockerfile`. It runs the Argo API bridge using Gunicorn.
+- **prometheus**: A Prometheus container for collecting metrics from the `argo_bridge` service.
+- **grafana**: A Grafana container for visualizing the metrics collected by Prometheus. It comes pre-configured with a dashboard for the Argo Bridge.
+
+### Steps to run
+
+- To run, first set the environment variable `METRICS_TOKEN` to an arbitrary string. 
+- Then, copy the `prometheus.yml.template` to `prometheus.yml` replacing the bearer token to that string. 
+- Currently the prod setup is configured for SSL and requires a `myserver.crt` and `myserver.key`. Either generate these, or change the gunicorn and prometheus service to http.
+- Once that is in place, build and run the containers using the following command from the root of the project directory:
+
+```bash
+docker-compose up -d
+```
+
+This will start all services in detached mode.
+
+- The Argo Bridge will be accessible on port 80 of the host machine.
+- Prometheus will be accessible on `http://localhost:9090`.
+- Grafana will be accessible on `http://localhost:3000`. The default credentials are `admin` / `admin_password`.
+
+To stop the containers:
+
+```bash
+docker-compose down
+```
+
+### Manual Gunicorn Deployment (without Docker)
+
+If you prefer to run the application with Gunicorn directly without Docker, you can use the following command:
 
 `gunicorn --workers 4 --bind localhost:7285 argo_bridge:app`
-
 
 ## Testing
 
@@ -91,3 +121,4 @@ Run the test suite using unittest:
 
 ```bash
 python -m unittest test_server.py
+```
