@@ -5,4 +5,4 @@ scrape_configs:
   - job_name: 'argo_bridge'
     static_configs:
       - targets: ['argo_bridge:80']  # Use Docker service name instead of localhost
-    bearer_token: "b8c7c87611d8c1bfa0df46d49b51562a"
+    bearer_token: $METRICS_TOKEN

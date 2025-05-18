@@ -1,1 +1,0 @@
-gunicorn --workers 16 --bind localhost:7285 --config gunicorn_config.py argo_bridge:app
