@@ -2,7 +2,7 @@ services:
   argo_bridge:
     build: .
     ports:
-      - "80:80"
+      - "443:443"
     restart: unless-stopped
     volumes:
       - metrics_data:/app/metrics

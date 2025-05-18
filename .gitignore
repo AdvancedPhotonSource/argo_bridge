@@ -3,3 +3,5 @@ __pycache__
 metrics
 .env
 prometheus.yml
+myserver.crt
+myserver.key

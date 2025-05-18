@@ -495,7 +495,7 @@ def check_argo_connection():
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run the Flask server.')
-    parser.add_argument('--username', type=str, default='APS', help='Username for the API requests')
+    parser.add_argument('--username', type=str, default='argo_bridge', help='Username for the API requests')
     parser.add_argument('--port', type=int, default=7285, help='Port number to run the server on')
     parser.add_argument('--dlog', action='store_true', help='Enable debug-level logging')
     return parser.parse_args()
