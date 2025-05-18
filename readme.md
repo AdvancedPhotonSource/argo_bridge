@@ -86,7 +86,12 @@ For personal use, the development server should be plenty, but if you wish to sc
 - **prometheus**: A Prometheus container for collecting metrics from the `argo_bridge` service.
 - **grafana**: A Grafana container for visualizing the metrics collected by Prometheus. It comes pre-configured with a dashboard for the Argo Bridge.
 
-To run, first set the environment variable `METRICS_TOKEN` to an arbitrary string. Then, copy the `prometheus.yml.template` to `prometheus.yml` replacing the bearer token to that string. Once that is in place, build and run the containers using the following command from the root of the project directory:
+### Steps to run
+
+- To run, first set the environment variable `METRICS_TOKEN` to an arbitrary string. 
+- Then, copy the `prometheus.yml.template` to `prometheus.yml` replacing the bearer token to that string. 
+- Currently the prod setup is configured for SSL and requires a `myserver.crt` and `myserver.key`. Either generate these, or change the gunicorn and prometheus service to http.
+- Once that is in place, build and run the containers using the following command from the root of the project directory:
 
 ```bash
 docker-compose up -d

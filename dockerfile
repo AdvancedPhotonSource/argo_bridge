@@ -16,4 +16,4 @@ RUN mkdir -p /app/metrics && chmod 777 /app/metrics
 EXPOSE 80
 
 # Command to run your application
-CMD ["gunicorn", "--workers", "1", "--bind", "0.0.0.0:80", "bridge_prod:prod_app"]
+CMD ["gunicorn", "--config", "gunicorn_config.py", "bridge_prod:prod_app"]
