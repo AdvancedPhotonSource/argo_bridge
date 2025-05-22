@@ -117,7 +117,7 @@ MODELS = {
     "data": []
 }
 
-for model in MODEL_MAPPING.keys():
+for model in MODEL_ENV.keys():
     MODELS["data"].append({
             "id": model,
             "object": "model",
