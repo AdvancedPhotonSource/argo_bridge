@@ -66,6 +66,7 @@ MODEL_MAPPING = {
     'gpto1': 'gpto1',
     'o1': 'gpto1',
 
+
     'gemini25pro': 'gemini25pro',
     'gemini25flash': 'gemini25flash',
     'claudeopus4': 'claudeopus4',
@@ -123,6 +124,10 @@ MODEL_ENV = {
     'claudesonnet37': 'dev',
     'claudesonnet35v2': 'dev',
 }
+
+
+NON_STREAMING_MODELS = ['gemini25pro', 'gemini25flash', 
+                        'claudeopus4', 'claudesonnet4', 'claudesonnet37', 'claudesonnet35v2']
 
 # For models endpoint
 MODELS = {
@@ -191,8 +196,7 @@ def chat_completions():
     # Force non-streaming for specific models. Remove once Argo supports streaming for all models.
     # TODO: TEMP Fake streaming for the new models until Argo supports it
     is_fake_stream = False
-    non_streaming_models = ['gemini25pro', 'gemini25flash', 'claudeopus4', 'claudesonnet4', 'claudesonnet37', 'claudesonnet35v2']
-    if model_base in non_streaming_models:
+    if model_base in NON_STREAMING_MODELS:
         is_fake_stream = True
         
     if model_base not in MODEL_MAPPING:
@@ -203,6 +207,15 @@ def chat_completions():
     model = MODEL_MAPPING[model_base]
 
     logging.debug(f"Received request: {data}")
+
+    # Process multimodal content for Gemini models
+    if model_base.startswith('gemini'):
+        try:
+            data['messages'] = convert_multimodal_to_text(data['messages'], model_base)
+        except ValueError as e:
+            return jsonify({"error": {
+                "message": str(e)
+            }}), 400
 
     req_obj = {
         "user": ANL_USER,
@@ -359,6 +372,54 @@ def _fake_stream_response(text, model):
     yield f"data: {json.dumps(end_chunk)}\n\n"
     yield "data: [DONE]\n\n"
 
+def convert_multimodal_to_text(messages, model_base):
+    """
+    Convert multimodal content format to plain text for Gemini models.
+    
+    Args:
+        messages (list): List of message objects
+        model_base (str): The model being used
+    
+    Returns:
+        list: Processed messages with text-only content
+        
+    Raises:
+        ValueError: If non-text content is found in multimodal format
+    """
+    # Only process for Gemini models
+    gemini_models = ['gemini25pro', 'gemini25flash']
+    if model_base not in gemini_models:
+        return messages
+    
+    processed_messages = []
+    
+    for message in messages:
+        processed_message = message.copy()
+        content = message.get("content")
+        
+        # Check if content is in multimodal format (list of content objects)
+        if isinstance(content, list):
+            text_parts = []
+            
+            for content_item in content:
+                if isinstance(content_item, dict):
+                    content_type = content_item.get("type")
+                    
+                    if content_type == "text":
+                        text_parts.append(content_item.get("text", ""))
+                    else:
+                        # Error if non-text content is found
+                        raise ValueError(f"Gemini models only support text content. Found unsupported content type: '{content_type}'")
+                else:
+                    # If content item is not a dict, treat as plain text
+                    text_parts.append(str(content_item))
+            
+            # Join all text parts and set as the content
+            processed_message["content"] = " ".join(text_parts)
+            
+        processed_messages.append(processed_message)
+    
+    return processed_messages
 
 
 """
