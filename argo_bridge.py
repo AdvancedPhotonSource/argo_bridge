@@ -161,9 +161,29 @@ for model in MODEL_ENV.keys():
 EMBED_ENV = 'prod'
 
 DEFAULT_MODEL = "gpt4o"
-ANL_USER = "APS"
+BRIDGE_USER = "ARGO_BRIDGE"
 ANL_STREAM_URL = "https://apps-dev.inside.anl.gov/argoapi/api/v1/resource/streamchat/"
 ANL_DEBUG_FP = 'log_bridge.log'
+
+
+def get_user_from_auth_header():
+    """
+    Extracts the user from the Authorization header.
+    If the header is present and valid, the bearer token is returned.
+    Otherwise, the default user is returned.
+    """
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        # Return the token part of the header
+        token = auth_header.split(" ")[1]
+        logging.debug(f"Authorization header found: {auth_header}")
+        if token == 'noop':
+            return BRIDGE_USER
+
+        return auth_header.split(" ")[1]
+    # Return the default user if no valid header is found
+    return BRIDGE_USER
+
 
 def get_api_url(model, endpoint_type):
     """
@@ -229,8 +249,10 @@ def chat_completions():
                 "message": str(e)
             }}), 400
 
+    user = get_user_from_auth_header()
+
     req_obj = {
-        "user": ANL_USER,
+        "user": user,
         "model": model,
         "messages": data['messages'],
         "system": "",
@@ -461,8 +483,10 @@ def completions():
 
     logging.debug(f"Received request: {data}")
 
+    user = get_user_from_auth_header()
+
     req_obj = {
-        "user": ANL_USER,
+        "user": user,
         "model": model,
         "prompt": [data['prompt']],
         "system": "",
@@ -542,7 +566,8 @@ def embeddings():
     if isinstance(input_data, str):
         input_data = [input_data]
 
-    embedding_vectors = _get_embeddings_from_argo(input_data, model)
+    user = get_user_from_auth_header()
+    embedding_vectors = _get_embeddings_from_argo(input_data, model, user)
     
     response_data = {
         "object": "list",
@@ -564,7 +589,7 @@ def embeddings():
     return jsonify(response_data)
     
 
-def _get_embeddings_from_argo(texts, model):
+def _get_embeddings_from_argo(texts, model, user=BRIDGE_USER):
     BATCH_SIZE = 16
     all_embeddings = []
     
@@ -572,7 +597,7 @@ def _get_embeddings_from_argo(texts, model):
         batch_texts = texts[i:i + BATCH_SIZE]
         
         payload = {
-            "user": ANL_USER,
+            "user": user,
             "model": model,
             "prompt": batch_texts
         }
