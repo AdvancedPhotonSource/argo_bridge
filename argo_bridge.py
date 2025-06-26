@@ -228,7 +228,7 @@ def chat_completions():
     # Force non-streaming for specific models. Remove once Argo supports streaming for all models.
     # TODO: TEMP Fake streaming for the new models until Argo supports it
     is_fake_stream = False
-    if model_base in NON_STREAMING_MODELS:
+    if model_base in NON_STREAMING_MODELS and is_streaming:
         is_fake_stream = True
         
     if model_base not in MODEL_MAPPING:
