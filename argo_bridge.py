@@ -66,6 +66,12 @@ MODEL_MAPPING = {
     'gpto1': 'gpto1',
     'o1': 'gpto1',
 
+    'gpto3': 'gpto3',
+    'gpto4mini': 'gpto4mini',
+    'gpt41': 'gpt41',
+    'gpt41mini' : 'gpt41mini',
+    'gpt41nano' : 'gpt41nano',
+
 
     'gemini25pro': 'gemini25pro',
     'gemini25flash': 'gemini25flash',
@@ -123,11 +129,17 @@ MODEL_ENV = {
     'claudesonnet4': 'dev',
     'claudesonnet37': 'dev',
     'claudesonnet35v2': 'dev',
+    'gpto3': 'dev',
+    'gpto4mini': 'dev',
+    'gpt41': 'dev', 
+    'gpt41mini' : 'dev', 
+    'gpt41nano' : 'dev', 
 }
 
 
 NON_STREAMING_MODELS = ['gemini25pro', 'gemini25flash', 
-                        'claudeopus4', 'claudesonnet4', 'claudesonnet37', 'claudesonnet35v2']
+                        'claudeopus4', 'claudesonnet4', 'claudesonnet37', 'claudesonnet35v2', 
+                        'gpto3', 'gpto4mini', 'gpt41', 'gpt41mini', 'gpt41nano',]
 
 # For models endpoint
 MODELS = {
