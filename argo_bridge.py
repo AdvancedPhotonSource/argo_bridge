@@ -65,6 +65,13 @@ MODEL_MAPPING = {
 
     'gpto1': 'gpto1',
     'o1': 'gpto1',
+
+    'gemini25pro': 'gemini25pro',
+    'gemini25flash': 'gemini25flash',
+    'claudeopus4': 'claudeopus4',
+    'claudesonnet4': 'claudesonnet4',
+    'claudesonnet37': 'claudesonnet37',
+    'claudesonnet35v2': 'claudesonnet35v2',
 }
 
 
@@ -108,7 +115,13 @@ MODEL_ENV = {
     # Models using development environment
     'gpto3mini': 'dev',
     'gpto1mini': 'dev',
-    'gpto1': 'dev'
+    'gpto1': 'dev', 
+    'gemini25pro': 'dev',
+    'gemini25flash': 'dev',
+    'claudeopus4': 'dev',
+    'claudesonnet4': 'dev',
+    'claudesonnet37': 'dev',
+    'claudesonnet35v2': 'dev',
 }
 
 # For models endpoint
@@ -169,11 +182,19 @@ def chat_completions():
     logging.info("Received chat completions request")
 
     data = request.get_json()
+    logging.info(f"Request Data: {data}")
     model_base = data.get("model", DEFAULT_MODEL)
     is_streaming = data.get("stream", False)
     temperature = data.get("temperature", 0.1)
     stop = data.get("stop", [])
 
+    # Force non-streaming for specific models. Remove once Argo supports streaming for all models.
+    # TODO: TEMP Fake streaming for the new models until Argo supports it
+    is_fake_stream = False
+    non_streaming_models = ['gemini25pro', 'gemini25flash', 'claudeopus4', 'claudesonnet4', 'claudesonnet37', 'claudesonnet35v2']
+    if model_base in non_streaming_models:
+        is_fake_stream = True
+        
     if model_base not in MODEL_MAPPING:
         return jsonify({"error": {
             "message": f"Model '{model_base}' not supported."
@@ -194,7 +215,22 @@ def chat_completions():
 
     logging.debug(f"Argo Request {req_obj}")
 
-    if is_streaming:
+    if is_fake_stream:
+        logging.info(req_obj)
+        response = requests.post(get_api_url(model, 'chat'), json=req_obj)
+        
+        if not response.ok:
+            logging.error(f"Internal API error: {response.status_code} {response.reason}")
+            return jsonify({"error": {
+                "message": f"Internal API error: {response.status_code} {response.reason}"
+            }}), 500
+
+        json_response = response.json()
+        text = json_response.get("response", "")
+        logging.debug(f"Response Text {text}")
+        return Response(_fake_stream_response(text, model), mimetype='text/event-stream')
+
+    elif is_streaming:
         return Response(_stream_chat_response(model, req_obj), mimetype='text/event-stream')
     else:
         response = requests.post(get_api_url(model, 'chat'), json=req_obj)
@@ -279,6 +315,50 @@ def _static_chat_response(text, model):
             "finish_reason": "stop"
         }]
     }
+
+def _fake_stream_response(text, model):
+    begin_chunk = {
+        "id": 'abc',
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.now().timestamp()),
+        "model": model,
+        "choices": [{
+                    "index": 0,
+                    "delta": {'role': 'assistant', 'content':''},
+                    "logprobs": None,
+                    "finish_reason": None
+                }]                   
+    }
+    yield f"data: {json.dumps(begin_chunk)}\n\n"
+    chunk = {
+                    "id": 'abc',
+                    "object": "chat.completion.chunk",
+                    "created": int(datetime.datetime.now().timestamp()),
+                    "model": model,
+                    "choices": [{
+                                "index": 0,
+                                "delta": {'content': text},
+                                "logprobs": None,
+                                "finish_reason": None
+                            }]                   
+                }
+    yield f"data: {json.dumps(chunk)}\n\n"
+    end_chunk = {
+        "id": 'argo',
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.now().timestamp()),
+        "model": model,
+        "system_fingerprint": "fp_44709d6fcb",
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "logprobs": None,
+            "finish_reason": "stop"
+        }]
+    }
+    yield f"data: {json.dumps(end_chunk)}\n\n"
+    yield "data: [DONE]\n\n"
+
 
 
 """
@@ -509,6 +589,7 @@ if __name__ == '__main__':
         level=logging.DEBUG if debug_enabled else logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+    logging.getLogger('watchdog').setLevel(logging.CRITICAL+10) 
     
     logging.info(f'Starting server with debug mode: {debug_enabled}')
     print(f'Starting server... | Port {args.port} | User {args.username} | Debug: {debug_enabled}')
