@@ -39,7 +39,7 @@ python argo_bridge.py
 
 The server supports the following command-line arguments:
 
-- `--username`: Set the username for API requests (default: 'APS')
+- `--username`: Sets the **default** username for API requests when no API key is provided (default: 'ARGO_BRIDGE').
 - `--port`: Set the port number for the server (default: 7285)
 - `--dlog`: Enable debug-level logging (when set, logging is at DEBUG level; by default it is INFO level)
 
@@ -48,6 +48,15 @@ Example with custom settings:
 ```bash
 python argo_bridge.py --username custom_user --port 8000 --dlog
 ```
+
+## Authentication
+
+The bridge now supports passing a username as an API key using the `Authorization` header, following the OpenAI format.
+
+- **API Key**: The username can be passed as a bearer token.
+- **Format**: `Authorization: Bearer <your_username>`
+
+If no `Authorization` header is provided, the server will use the default username specified by the `--username` argument.
 
 ## Endpoints
 
@@ -69,9 +78,22 @@ The server accepts both Argo and OpenAI model identifiers.
 - GPT-4 Large: (`gpt4large`)
 - GPT-4 Turbo: (`gpt4turbo`, `gpt-4-turbo`)
 - GPT-4o: (`gpt4o`, `gpt-4o`, `gpt-4o-mini`)
+- GPT-4o Latest: (`gpt4olatest`, `gpt-4o-latest`)
 - GPT-o1 Preview: (`gpto1preview`, `o1-preview`)
 - GPT-o1 Mini: (`gpto1mini`, `o1-mini`, `o1mini`)
+- GPT-o1: (`gpto1`, `o1`)
 - GPT-o3 Mini: (`gpto3mini`, `o3-mini`, `o3mini`)
+- GPT-o3: (`gpto3`)
+- GPT-o4 Mini: (`gpto4mini`)
+- GPT-4.1: (`gpt41`)
+- GPT-4.1 Mini: (`gpt41mini`)
+- GPT-4.1 Nano: (`gpt41nano`)
+- Gemini 2.5 Pro: (`gemini25pro`)
+- Gemini 2.5 Flash: (`gemini25flash`)
+- Claude Opus 4: (`claudeopus4`)
+- Claude Sonnet 4: (`claudesonnet4`)
+- Claude Sonnet 3.7: (`claudesonnet37`)
+- Claude Sonnet 3.5 v2: (`claudesonnet35v2`)
 
 ### Embedding Models
 
