@@ -12,7 +12,7 @@ from functools import wraps
 
 
 app = Flask(__name__)
-CORS(app, 
+CORS(app,
      origins="*",
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
      expose_headers=["Content-Type", "Authorization"],
@@ -48,7 +48,7 @@ MODEL_MAPPING = {
     'gpt-4o': 'gpt4o',
     'gpt4o': 'gpt4o',
     'gpt-4o-mini': 'gpt4o',
-    
+
     'gpt4olatest': 'gpt4olatest',
     'gpt-4o-latest': 'gpt4olatest',
 
@@ -58,16 +58,17 @@ MODEL_MAPPING = {
     'o1-mini': 'gpto1mini',
     'gpto1mini': 'gpto1mini',
     'o1mini': 'gpto1mini',
-
     'o3-mini': 'gpto3mini',
     'o3mini': 'gpto3mini',
     'gpto3mini': 'gpto3mini',
+    'gpto4mini': 'gpto4mini',
+    'o4-mini' : 'gpto4mini',
 
     'gpto1': 'gpto1',
     'o1': 'gpto1',
-
+    'o3': 'gpto3',
     'gpto3': 'gpto3',
-    'gpto4mini': 'gpto4mini',
+
     'gpt41': 'gpt41',
     'gpt41mini' : 'gpt41mini',
     'gpt41nano' : 'gpt41nano',
@@ -118,11 +119,11 @@ MODEL_ENV = {
     'gpt4o': 'prod',
     'gpt4olatest': 'prod',
     'gpto1preview': 'prod',
-    
+
     # Models using development environment
     'gpto3mini': 'dev',
     'gpto1mini': 'dev',
-    'gpto1': 'dev', 
+    'gpto1': 'dev',
     'gemini25pro': 'dev',
     'gemini25flash': 'dev',
     'claudeopus4': 'dev',
@@ -131,19 +132,19 @@ MODEL_ENV = {
     'claudesonnet35v2': 'dev',
     'gpto3': 'dev',
     'gpto4mini': 'dev',
-    'gpt41': 'dev', 
-    'gpt41mini' : 'dev', 
-    'gpt41nano' : 'dev', 
+    'gpt41': 'dev',
+    'gpt41mini' : 'dev',
+    'gpt41nano' : 'dev',
 }
 
 
-NON_STREAMING_MODELS = ['gemini25pro', 'gemini25flash', 
-                        'claudeopus4', 'claudesonnet4', 'claudesonnet37', 'claudesonnet35v2', 
+NON_STREAMING_MODELS = ['gemini25pro', 'gemini25flash',
+                        'claudeopus4', 'claudesonnet4', 'claudesonnet37', 'claudesonnet35v2',
                         'gpto3', 'gpto4mini', 'gpt41', 'gpt41mini', 'gpt41nano',]
 
 # For models endpoint
 MODELS = {
-    "object": "list", 
+    "object": "list",
     "data": []
 }
 
@@ -188,11 +189,11 @@ def get_user_from_auth_header():
 def get_api_url(model, endpoint_type):
     """
     Determine the correct API URL based on model and endpoint type
-    
+
     Args:
         model (str): The model identifier
         endpoint_type (str): Either 'chat' or 'embed'
-    
+
     Returns:
         str: The appropriate API URL
     """
@@ -202,7 +203,7 @@ def get_api_url(model, endpoint_type):
     else:
         # For chat models, look up the environment or default to prod
         env = MODEL_ENV.get(model, 'prod')
-    
+
     # Return the URL from the mapping
     return URL_MAPPING[env][endpoint_type]
 
@@ -230,12 +231,12 @@ def chat_completions():
     is_fake_stream = False
     if model_base in NON_STREAMING_MODELS and is_streaming:
         is_fake_stream = True
-        
+
     if model_base not in MODEL_MAPPING:
         return jsonify({"error": {
             "message": f"Model '{model_base}' not supported."
         }}), 400
-    
+
     model = MODEL_MAPPING[model_base]
 
     logging.debug(f"Received request: {data}")
@@ -265,7 +266,7 @@ def chat_completions():
     if is_fake_stream:
         logging.info(req_obj)
         response = requests.post(get_api_url(model, 'chat'), json=req_obj)
-        
+
         if not response.ok:
             logging.error(f"Internal API error: {response.status_code} {response.reason}")
             return jsonify({"error": {
@@ -281,7 +282,7 @@ def chat_completions():
         return Response(_stream_chat_response(model, req_obj), mimetype='text/event-stream')
     else:
         response = requests.post(get_api_url(model, 'chat'), json=req_obj)
-        
+
         if not response.ok:
             logging.error(f"Internal API error: {response.status_code} {response.reason}")
             return jsonify({"error": {
@@ -293,7 +294,7 @@ def chat_completions():
         logging.debug(f"Response Text {text}")
         return jsonify(_static_chat_response(text, model_base))
 
-    
+
 def _stream_chat_response(model, req_obj):
     begin_chunk = {
         "id": 'abc',
@@ -305,7 +306,7 @@ def _stream_chat_response(model, req_obj):
                     "delta": {'role': 'assistant', 'content':''},
                     "logprobs": None,
                     "finish_reason": None
-                }]                   
+                }]
     }
     yield f"data: {json.dumps(begin_chunk)}\n\n"
 
@@ -325,10 +326,10 @@ def _stream_chat_response(model, req_obj):
                                 "delta": {'content': text},
                                 "logprobs": None,
                                 "finish_reason": None
-                            }]                   
+                            }]
                 }
                 yield f"data: {json.dumps(response_chunk)}\n\n"
-    
+
     end_chunk = {
         "id": 'argo',
         "object": "chat.completion.chunk",
@@ -374,7 +375,7 @@ def _fake_stream_response(text, model):
                     "delta": {'role': 'assistant', 'content':''},
                     "logprobs": None,
                     "finish_reason": None
-                }]                   
+                }]
     }
     yield f"data: {json.dumps(begin_chunk)}\n\n"
     chunk = {
@@ -387,7 +388,7 @@ def _fake_stream_response(text, model):
                                 "delta": {'content': text},
                                 "logprobs": None,
                                 "finish_reason": None
-                            }]                   
+                            }]
                 }
     yield f"data: {json.dumps(chunk)}\n\n"
     end_chunk = {
@@ -409,14 +410,14 @@ def _fake_stream_response(text, model):
 def convert_multimodal_to_text(messages, model_base):
     """
     Convert multimodal content format to plain text for Gemini models.
-    
+
     Args:
         messages (list): List of message objects
         model_base (str): The model being used
-    
+
     Returns:
         list: Processed messages with text-only content
-        
+
     Raises:
         ValueError: If non-text content is found in multimodal format
     """
@@ -424,21 +425,21 @@ def convert_multimodal_to_text(messages, model_base):
     gemini_models = ['gemini25pro', 'gemini25flash']
     if model_base not in gemini_models:
         return messages
-    
+
     processed_messages = []
-    
+
     for message in messages:
         processed_message = message.copy()
         content = message.get("content")
-        
+
         # Check if content is in multimodal format (list of content objects)
         if isinstance(content, list):
             text_parts = []
-            
+
             for content_item in content:
                 if isinstance(content_item, dict):
                     content_type = content_item.get("type")
-                    
+
                     if content_type == "text":
                         text_parts.append(content_item.get("text", ""))
                     else:
@@ -447,12 +448,12 @@ def convert_multimodal_to_text(messages, model_base):
                 else:
                     # If content item is not a dict, treat as plain text
                     text_parts.append(str(content_item))
-            
+
             # Join all text parts and set as the content
             processed_message["content"] = " ".join(text_parts)
-            
+
         processed_messages.append(processed_message)
-    
+
     return processed_messages
 
 
@@ -478,7 +479,7 @@ def completions():
         return jsonify({"error": {
             "message": f"Model '{model_base}' not supported."
         }}), 400
-    
+
     model = MODEL_MAPPING[model_base]
 
     logging.debug(f"Received request: {data}")
@@ -554,21 +555,21 @@ def embeddings():
     logging.info("Recieved embeddings request")
     data = request.get_json()
     model_base = data.get("model", "v3small")
-    
+
     # Check if the model is supported
     if model_base not in EMBEDDING_MODEL_MAPPING:
         return jsonify({"error": {
             "message": f"Embedding model '{model_base}' not supported."
         }}), 400
     model = EMBEDDING_MODEL_MAPPING[model_base]
-    
+
     input_data = data.get("input", [])
     if isinstance(input_data, str):
         input_data = [input_data]
 
     user = get_user_from_auth_header()
     embedding_vectors = _get_embeddings_from_argo(input_data, model, user)
-    
+
     response_data = {
         "object": "list",
         "data": [],
@@ -578,42 +579,42 @@ def embeddings():
             "total_tokens": 0
         }
     }
-    
+
     for i, embedding in enumerate(embedding_vectors):
         response_data["data"].append({
             "object": "embedding",
             "embedding": embedding,
             "index": i
         })
-    
+
     return jsonify(response_data)
-    
+
 
 def _get_embeddings_from_argo(texts, model, user=BRIDGE_USER):
     BATCH_SIZE = 16
     all_embeddings = []
-    
+
     for i in range(0, len(texts), BATCH_SIZE):
         batch_texts = texts[i:i + BATCH_SIZE]
-        
+
         payload = {
             "user": user,
             "model": model,
             "prompt": batch_texts
         }
-        
+
         logging.debug(f"Sending embedding request for batch {i // BATCH_SIZE + 1}: {payload}")
-        
+
         response = requests.post(get_api_url(model, 'embed'), json=payload)
-        
+
         if not response.ok:
             logging.error(f"Embedding API error: {response.status_code} {response.reason}")
             raise Exception(f"Embedding API error: {response.status_code} {response.reason}")
-        
+
         embedding_response = response.json()
         batch_embeddings = embedding_response.get("embedding", [])
         all_embeddings.extend(batch_embeddings)
-    
+
     return all_embeddings
 
 """
@@ -631,16 +632,16 @@ def models_list():
 def check_argo_connection():
     """
     Check connection to Argo API endpoints and report status.
-    
+
     Returns:
         bool: True if all connections successful, False otherwise
     """
     all_successful = True
-    
+
     # Print for end-user
     print("\nTesting Argo API connections...")
     logging.info("Testing Argo API connections")
-    
+
     for env in ['prod', 'dev']:
         for endpoint_type in ['chat', 'embed']:
             url = URL_MAPPING[env][endpoint_type]
@@ -654,14 +655,14 @@ def check_argo_connection():
                 print(msg)
                 logging.error(msg)
                 all_successful = False
-    
+
     if all_successful:
         print("✓ All Argo API connections successful!")
         logging.info("All Argo API connections successful")
     else:
         print("⚠ Some Argo API connections failed. The server may not function correctly.")
         logging.warning("Some Argo API connections failed")
-    
+
     return all_successful
 
 
@@ -683,12 +684,12 @@ if __name__ == '__main__':
     args = parse_args()
     debug_enabled = args.dlog
     logging.basicConfig(
-        filename=ANL_DEBUG_FP, 
+        filename=ANL_DEBUG_FP,
         level=logging.DEBUG if debug_enabled else logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
-    logging.getLogger('watchdog').setLevel(logging.CRITICAL+10) 
-    
+    logging.getLogger('watchdog').setLevel(logging.CRITICAL+10)
+
     logging.info(f'Starting server with debug mode: {debug_enabled}')
     print(f'Starting server... | Port {args.port} | User {args.username} | Debug: {debug_enabled}')
 
