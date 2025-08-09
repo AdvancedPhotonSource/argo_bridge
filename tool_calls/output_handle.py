@@ -249,7 +249,7 @@ class ToolInterceptor:
         """
         # Placeholder implementation - to be implemented later
         logger.warning("Google native tool calling not implemented yet, falling back to OpenAI format")
-        raise NotImplementedError
+        raise NotImplementedError("Google native tool calling is not yet implemented. Please implement Google-specific tool calling format processing.")
 
 
 def chat_completion_to_response_tool_call(
