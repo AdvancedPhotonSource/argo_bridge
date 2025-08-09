@@ -13,6 +13,9 @@ from functools import wraps
 # Import tool calling functionality
 from tool_calls import handle_tools, ToolInterceptor, tool_calls_to_openai, tool_calls_to_openai_stream, determine_model_family
 
+# Import centralized logging
+from logging_config import get_logger, log_request_summary, log_response_summary, log_tool_processing, log_data_verbose
+
 
 app = Flask(__name__)
 CORS(app,
@@ -221,10 +224,9 @@ def get_api_url(model, endpoint_type):
 @app.route('/api/chat/completions', methods=['POST'])
 @app.route('/v1/chat/completions', methods=['POST']) #LMStudio Compatibility
 def chat_completions():
-    logging.info("Received chat completions request")
-
+    logger = get_logger('chat')
+    
     data = request.get_json()
-    logging.info(f"Request Data: {data}")
     model_base = data.get("model", DEFAULT_MODEL)
     is_streaming = data.get("stream", False)
     temperature = data.get("temperature", 0.1)
@@ -232,25 +234,30 @@ def chat_completions():
 
     # Check if request contains tool-related parameters
     has_tools = "tools" in data or "tool_choice" in data
+    
+    # Log request summary
+    log_request_summary("/v1/chat/completions", model_base, has_tools)
+    log_data_verbose("Request data", data)
 
     # Force non-streaming for specific models. Remove once Argo supports streaming for all models.
     # TODO: TEMP Fake streaming for the new models until Argo supports it
     is_fake_stream = False
     if model_base in NON_STREAMING_MODELS and is_streaming:
         is_fake_stream = True
+        logger.debug(f"Using fake streaming for {model_base}")
     
     # Also force fake streaming for tool calls until we implement streaming tool support
     if has_tools and is_streaming:
         is_fake_stream = True
+        logger.debug("Using fake streaming for tool calls")
 
     if model_base not in MODEL_MAPPING:
+        logger.error(f"Unsupported model: {model_base}")
         return jsonify({"error": {
             "message": f"Model '{model_base}' not supported."
         }}), 400
 
     model = MODEL_MAPPING[model_base]
-
-    logging.debug(f"Received request: {data}")
 
     # Process tool calls if present
     if has_tools:
@@ -259,11 +266,13 @@ def chat_completions():
             model_family = determine_model_family(model)
             use_native_tools = model_family in ["openai", "anthropic"]
             
-            logging.info(f"Processing tools for {model_family} model, native_tools={use_native_tools}")
+            tool_count = len(data.get("tools", []))
+            log_tool_processing(model_family, tool_count, use_native_tools)
+            
             data = handle_tools(data, native_tools=use_native_tools)
-            logging.debug(f"Processed request with tools: {data}")
+            log_data_verbose("Processed request with tools", data)
         except Exception as e:
-            logging.error(f"Tool processing failed: {e}")
+            logger.error(f"Tool processing failed: {e}")
             return jsonify({"error": {
                 "message": f"Tool processing failed: {str(e)}"
             }}), 400
@@ -294,26 +303,28 @@ def chat_completions():
     if "tool_choice" in data:
         req_obj["tool_choice"] = data["tool_choice"]
 
-    logging.debug(f"Argo Request {req_obj}")
+    log_data_verbose("Argo request", req_obj)
 
     if is_fake_stream:
-        logging.info(req_obj)
         response = requests.post(get_api_url(model, 'chat'), json=req_obj)
 
         if not response.ok:
-            logging.error(f"Internal API error: {response.status_code} {response.reason}")
+            logger.error(f"Argo API error: {response.status_code} {response.reason}")
+            log_response_summary("error", model_base)
             return jsonify({"error": {
                 "message": f"Internal API error: {response.status_code} {response.reason}"
             }}), 500
 
         json_response = response.json()
         text = json_response.get("response", "")
-        logging.debug(f"Response Text {text}")
+        log_data_verbose("Response text", text)
         
         # Process tool calls in response if present
         if has_tools:
+            log_response_summary("success", model_base, "tool_calls")
             return Response(_fake_stream_response_with_tools(text, model, model_base), mimetype='text/event-stream')
         else:
+            log_response_summary("success", model_base, "stop")
             return Response(_fake_stream_response(text, model), mimetype='text/event-stream')
 
     elif is_streaming:
@@ -325,19 +336,22 @@ def chat_completions():
         response = requests.post(get_api_url(model, 'chat'), json=req_obj)
 
         if not response.ok:
-            logging.error(f"Internal API error: {response.status_code} {response.reason}")
+            logger.error(f"Argo API error: {response.status_code} {response.reason}")
+            log_response_summary("error", model_base)
             return jsonify({"error": {
                 "message": f"Internal API error: {response.status_code} {response.reason}"
             }}), 500
 
         json_response = response.json()
         text = json_response.get("response", "")
-        logging.debug(f"Response Text {text}")
+        log_data_verbose("Response text", text)
         
         # Process tool calls in response if present
         if has_tools:
+            log_response_summary("success", model_base, "tool_calls")
             return jsonify(_static_chat_response_with_tools(text, model_base, json_response))
         else:
+            log_response_summary("success", model_base, "stop")
             return jsonify(_static_chat_response(text, model_base))
 
 
@@ -676,7 +690,8 @@ def _stream_chat_response_with_tools(model, req_obj, model_base):
 @app.route('/completions', methods=['POST'])
 @app.route('/v1/completions', methods=['POST', 'OPTIONS']) #LMStudio Compatibility
 def completions():
-    logging.info("Received completions request")
+    logger = get_logger('completions')
+    
     data = request.get_json()
     prompt = data.get("prompt", "")
     stop = data.get("stop", [])
@@ -684,14 +699,16 @@ def completions():
     model_base = data.get("model", DEFAULT_MODEL)
     is_streaming = data.get("stream", False)
 
+    log_request_summary("/v1/completions", model_base)
+    log_data_verbose("Request data", data)
+
     if model_base not in MODEL_MAPPING:
+        logger.error(f"Unsupported model: {model_base}")
         return jsonify({"error": {
             "message": f"Model '{model_base}' not supported."
         }}), 400
 
     model = MODEL_MAPPING[model_base]
-
-    logging.debug(f"Received request: {data}")
 
     user = get_user_from_auth_header()
 
@@ -704,22 +721,25 @@ def completions():
         "temperature": temperature
     }
 
-    logging.debug(f"Argo Request {req_obj}")
+    log_data_verbose("Argo request", req_obj)
 
     response = requests.post(get_api_url(model, 'chat'), json=req_obj)
     if not response.ok:
-        logging.error(f"Internal API error: {response.status_code} {response.reason}")
+        logger.error(f"Argo API error: {response.status_code} {response.reason}")
+        log_response_summary("error", model_base)
         return jsonify({"error": {
             "message": f"Internal API error: {response.status_code} {response.reason}"
         }}), 500
 
     json_response = response.json()
     text = json_response.get("response", "")
-    logging.debug(f"Response Text {text}")
+    log_data_verbose("Response text", text)
 
     if is_streaming:
+        log_response_summary("success", model_base, "stop")
         return Response(_stream_completions_response(text, model), mimetype='text/event-stream')
     else:
+        log_response_summary("success", model_base, "stop")
         return jsonify(_static_completions_response(text, model_base))
 
 
@@ -761,12 +781,17 @@ def _stream_completions_response(text, model):
 @app.route('/embeddings', methods=['POST'])
 @app.route('/v1/embeddings', methods=['POST'])
 def embeddings():
-    logging.info("Recieved embeddings request")
+    logger = get_logger('embeddings')
+    
     data = request.get_json()
     model_base = data.get("model", "v3small")
 
+    log_request_summary("/v1/embeddings", model_base)
+    log_data_verbose("Request data", data)
+
     # Check if the model is supported
     if model_base not in EMBEDDING_MODEL_MAPPING:
+        logger.error(f"Unsupported embedding model: {model_base}")
         return jsonify({"error": {
             "message": f"Embedding model '{model_base}' not supported."
         }}), 400
@@ -777,7 +802,15 @@ def embeddings():
         input_data = [input_data]
 
     user = get_user_from_auth_header()
-    embedding_vectors = _get_embeddings_from_argo(input_data, model, user)
+    
+    try:
+        embedding_vectors = _get_embeddings_from_argo(input_data, model, user)
+    except Exception as e:
+        logger.error(f"Embedding processing failed: {e}")
+        log_response_summary("error", model_base)
+        return jsonify({"error": {
+            "message": f"Embedding processing failed: {str(e)}"
+        }}), 500
 
     response_data = {
         "object": "list",
@@ -796,10 +829,12 @@ def embeddings():
             "index": i
         })
 
+    log_response_summary("success", model_base)
     return jsonify(response_data)
 
 
 def _get_embeddings_from_argo(texts, model, user=BRIDGE_USER):
+    logger = get_logger('embeddings')
     BATCH_SIZE = 16
     all_embeddings = []
 
@@ -812,18 +847,20 @@ def _get_embeddings_from_argo(texts, model, user=BRIDGE_USER):
             "prompt": batch_texts
         }
 
-        logging.debug(f"Sending embedding request for batch {i // BATCH_SIZE + 1}: {payload}")
+        logger.debug(f"Sending embedding request for batch {i // BATCH_SIZE + 1}")
+        log_data_verbose(f"Embedding batch {i // BATCH_SIZE + 1} payload", payload)
 
         response = requests.post(get_api_url(model, 'embed'), json=payload)
 
         if not response.ok:
-            logging.error(f"Embedding API error: {response.status_code} {response.reason}")
+            logger.error(f"Argo embedding API error: {response.status_code} {response.reason}")
             raise Exception(f"Embedding API error: {response.status_code} {response.reason}")
 
         embedding_response = response.json()
         batch_embeddings = embedding_response.get("embedding", [])
         all_embeddings.extend(batch_embeddings)
 
+    logger.debug(f"Successfully processed {len(all_embeddings)} embeddings")
     return all_embeddings
 
 """

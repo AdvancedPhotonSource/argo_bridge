@@ -22,6 +22,10 @@ from tool_types.function_call import (
 )
 from .utils import generate_id
 from .handler import ToolCall
+from logging_config import get_logger
+
+# Create module-specific logger
+logger = get_logger(__name__)
 
 
 class ToolInterceptor:
@@ -58,7 +62,7 @@ class ToolInterceptor:
             # Native tool calling format
             return self._process_native(response_content, model_family)
         else:
-            print(f"Unexpected response content type: {type(response_content)}")
+            logger.warning(f"Unexpected response content type: {type(response_content)}")
             return None, str(response_content)
 
     def _process_prompt_based(self, text: str) -> Tuple[Optional[List[ToolCall]], str]:
@@ -124,21 +128,20 @@ class ToolInterceptor:
         Returns:
             Tuple of (list of tool calls or None, text content)
         """
-        print(" ")
-        print(f"Received response data: {response_data}")
-        print(" ")
+        logger.debug(f"Processing native tool calling response with {len(response_data)} keys")
+        logger.debug(f"Response data: {response_data}")
 
         if model_family == "openai":
-            print("[Output Handle] Using [OpenAI] native tool calling format")
+            logger.debug("Using OpenAI native tool calling format")
             return self._process_openai_native(response_data)
         elif model_family == "anthropic":
-            print("[Output Handle] Using [Anthropic] native tool calling format")
+            logger.debug("Using Anthropic native tool calling format")
             return self._process_anthropic_native(response_data)
         elif model_family == "google":
-            print("[Output Handle] Using [Google] native tool calling format")
+            logger.debug("Using Google native tool calling format")
             return self._process_google_native(response_data)
         else:
-            print(f"Unknown model family for model: {model_family}, falling back to OpenAI format")
+            logger.warning(f"Unknown model family: {model_family}, falling back to OpenAI format")
             return self._process_openai_native(response_data)
 
     def _process_openai_native(
@@ -213,8 +216,8 @@ class ToolInterceptor:
         # Get tool calls array
         claude_tool_calls = response.get("tool_calls", [])
 
-        print(f"[Output Handle] Claude tool calls: {claude_tool_calls}")
-        print(f"[Output Handle] Claude text content: {text_content}")
+        logger.debug(f"Anthropic tool calls: {claude_tool_calls}")
+        logger.debug(f"Anthropic text content: {text_content}")
 
         # Convert Claude tool calls to ToolCall objects
         tool_calls = None
@@ -226,7 +229,7 @@ class ToolInterceptor:
                     claude_tool_call, api_format="anthropic"
                 )
                 tool_calls.append(tool_call)
-            print(f"[Output Handle] Converted ToolCall objects: {tool_calls}")
+            logger.debug(f"Converted {len(tool_calls)} ToolCall objects")
 
         return tool_calls, text_content
 
@@ -245,7 +248,7 @@ class ToolInterceptor:
             Tuple of (list of ToolCall objects or None, text content)
         """
         # Placeholder implementation - to be implemented later
-        print("Google native tool calling not implemented yet, falling back to OpenAI format")
+        logger.warning("Google native tool calling not implemented yet, falling back to OpenAI format")
         raise NotImplementedError
 
 

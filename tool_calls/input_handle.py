@@ -16,12 +16,16 @@ Usage
 """
 
 import json
+import logging
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import ValidationError
 
 from .utils import determine_model_family
 from .tool_prompts import get_prompt_skeleton
+
+# Get logger for this module
+logger = logging.getLogger('argo_bridge.tool_calls.input_handle')
 
 # ======================================================================
 # TYPE ALIASES
@@ -258,12 +262,12 @@ def handle_tools_native(data: Dict[str, Any]) -> Dict[str, Any]:
             data["tools"] = converted_tools
             data["tool_choice"] = converted_tool_choice
 
-            print(f"[Input Handle] {model_type.title()} model detected, converted tools")
-            print(f"[Input Handle] Converted tools: {converted_tools}")
-            print(f"[Input Handle] Converted tool_choice: {converted_tool_choice}")
+            logger.debug(f"{model_type.title()} model detected, converted tools")
+            logger.debug(f"Converted tools: {converted_tools}")
+            logger.debug(f"Converted tool_choice: {converted_tool_choice}")
 
         except (ValueError, ValidationError) as e:
-            print(f"[Input Handle] Tool validation/conversion failed: {e}")
+            logger.error(f"Tool validation/conversion failed: {e}")
             raise ValueError(f"Tool validation/conversion failed: {e}")
 
     # Process tool_calls and tool messages if present
@@ -286,7 +290,7 @@ def handle_tools_native(data: Dict[str, Any]) -> Dict[str, Any]:
                                 tool_call_obj.serialize("openai-chatcompletion")
                             )
                         converted_message["tool_calls"] = converted_tool_calls
-                        print(f"[Input Handle] Converted tool_calls in message: {converted_tool_calls}")
+                        logger.debug(f"Converted tool_calls in message: {converted_tool_calls}")
 
                     elif model_type == "anthropic":
                         # For Anthropic, convert tool_calls to content array format
@@ -311,7 +315,7 @@ def handle_tools_native(data: Dict[str, Any]) -> Dict[str, Any]:
                         converted_message.pop(
                             "tool_calls", None
                         )  # Remove tool_calls field
-                        print(f"[Input Handle] Converted tool_calls to Anthropic content format: {content_blocks}")
+                        logger.debug(f"Converted tool_calls to Anthropic content format: {content_blocks}")
 
                     elif model_type == "google":
                         # TODO: Implement Google format conversion
@@ -324,7 +328,7 @@ def handle_tools_native(data: Dict[str, Any]) -> Dict[str, Any]:
                                 tool_call_obj.serialize("google")
                             )
                         converted_message["tool_calls"] = converted_tool_calls
-                        print(f"[Input Handle] Converted tool_calls in message: {converted_tool_calls}")
+                        logger.debug(f"Converted tool_calls in message: {converted_tool_calls}")
 
                     else:
                         # Default to OpenAI format
@@ -337,10 +341,10 @@ def handle_tools_native(data: Dict[str, Any]) -> Dict[str, Any]:
                                 tool_call_obj.serialize("openai-chatcompletion")
                             )
                         converted_message["tool_calls"] = converted_tool_calls
-                        print(f"[Input Handle] Converted tool_calls in message: {converted_tool_calls}")
+                        logger.debug(f"Converted tool_calls in message: {converted_tool_calls}")
 
                 except (ValueError, ValidationError) as e:
-                    print(f"[Input Handle] Tool call conversion failed in message: {e}")
+                    logger.warning(f"Tool call conversion failed in message: {e}")
                     # Keep original tool_calls if conversion fails
                     pass
 
@@ -363,10 +367,10 @@ def handle_tools_native(data: Dict[str, Any]) -> Dict[str, Any]:
                             }
                         ],
                     }
-                    print(f"[Input Handle] Converted tool message to Anthropic format: {converted_message}")
+                    logger.debug(f"Converted tool message to Anthropic format: {converted_message}")
                 elif model_type == "google":
                     # TODO: Implement Google tool result format conversion
-                    print("[Input Handle] Google tool result conversion not implemented yet")
+                    logger.debug("Google tool result conversion not implemented yet")
                 # For OpenAI, keep the original format
 
             converted_messages.append(converted_message)
@@ -420,7 +424,7 @@ def handle_tools(data: Dict[str, Any], *, native_tools: bool = True) -> Dict[str
         except (ValueError, ValidationError, NotImplementedError) as e:
             # Fallback: use prompt-based handling if native handling fails
             # This handles validation errors, unsupported model types, or unimplemented conversions
-            print(f"Native tool handling failed, falling back to prompt-based: {e}")
+            logger.warning(f"Native tool handling failed, falling back to prompt-based: {e}")
             return handle_tools_prompt(data)
     else:
         # Directly use prompt-based handling when native_tools=False
