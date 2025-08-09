@@ -16,10 +16,20 @@ from typing import Optional
 
 class ArgoLogger:
     """Centralized logger configuration for Argo Bridge"""
+    _instance = None
     
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(ArgoLogger, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        # Prevent re-initialization if already initialized
+        if hasattr(self, '_initialized') and self._initialized:
+            return
         self.logger = None
         self._setup_logging()
+        self._initialized = True
     
     def _setup_logging(self):
         """Setup logging configuration based on environment variables and defaults"""
