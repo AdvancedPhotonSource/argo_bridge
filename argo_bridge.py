@@ -68,8 +68,8 @@ MODEL_MAPPING = {
     'o3mini': 'gpto3mini',
     'gpto3mini': 'gpto3mini',
     'gpto4mini': 'gpto4mini',
-    'o4-mini' : 'gpto4mini',
-    'o4mini' : 'gpto4mini',
+    'o4-mini': 'gpto4mini',
+    'o4mini': 'gpto4mini',
 
     'gpto1': 'gpto1',
     'o1': 'gpto1',
