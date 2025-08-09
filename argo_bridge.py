@@ -10,6 +10,9 @@ from flask_cors import CORS  # Add this import
 import httpx
 from functools import wraps
 
+# Import tool calling functionality
+from tool_calls import handle_tools, ToolInterceptor, tool_calls_to_openai, tool_calls_to_openai_stream, determine_model_family
+
 
 app = Flask(__name__)
 CORS(app,
@@ -63,6 +66,7 @@ MODEL_MAPPING = {
     'gpto3mini': 'gpto3mini',
     'gpto4mini': 'gpto4mini',
     'o4-mini' : 'gpto4mini',
+    'o4mini' : 'gpto4mini',
 
     'gpto1': 'gpto1',
     'o1': 'gpto1',
@@ -226,10 +230,17 @@ def chat_completions():
     temperature = data.get("temperature", 0.1)
     stop = data.get("stop", [])
 
+    # Check if request contains tool-related parameters
+    has_tools = "tools" in data or "tool_choice" in data
+
     # Force non-streaming for specific models. Remove once Argo supports streaming for all models.
     # TODO: TEMP Fake streaming for the new models until Argo supports it
     is_fake_stream = False
     if model_base in NON_STREAMING_MODELS and is_streaming:
+        is_fake_stream = True
+    
+    # Also force fake streaming for tool calls until we implement streaming tool support
+    if has_tools and is_streaming:
         is_fake_stream = True
 
     if model_base not in MODEL_MAPPING:
@@ -240,6 +251,22 @@ def chat_completions():
     model = MODEL_MAPPING[model_base]
 
     logging.debug(f"Received request: {data}")
+
+    # Process tool calls if present
+    if has_tools:
+        try:
+            # Determine if we should use native tools or prompt-based tools
+            model_family = determine_model_family(model)
+            use_native_tools = model_family in ["openai", "anthropic"]
+            
+            logging.info(f"Processing tools for {model_family} model, native_tools={use_native_tools}")
+            data = handle_tools(data, native_tools=use_native_tools)
+            logging.debug(f"Processed request with tools: {data}")
+        except Exception as e:
+            logging.error(f"Tool processing failed: {e}")
+            return jsonify({"error": {
+                "message": f"Tool processing failed: {str(e)}"
+            }}), 400
 
     # Process multimodal content for Gemini models
     if model_base.startswith('gemini'):
@@ -256,10 +283,16 @@ def chat_completions():
         "user": user,
         "model": model,
         "messages": data['messages'],
-        "system": "",
+        "system": data.get("system", ""),
         "stop": stop,
         "temperature": temperature
     }
+
+    # Add tool-related fields if they exist (for native tool calling)
+    if "tools" in data:
+        req_obj["tools"] = data["tools"]
+    if "tool_choice" in data:
+        req_obj["tool_choice"] = data["tool_choice"]
 
     logging.debug(f"Argo Request {req_obj}")
 
@@ -276,10 +309,18 @@ def chat_completions():
         json_response = response.json()
         text = json_response.get("response", "")
         logging.debug(f"Response Text {text}")
-        return Response(_fake_stream_response(text, model), mimetype='text/event-stream')
+        
+        # Process tool calls in response if present
+        if has_tools:
+            return Response(_fake_stream_response_with_tools(text, model, model_base), mimetype='text/event-stream')
+        else:
+            return Response(_fake_stream_response(text, model), mimetype='text/event-stream')
 
     elif is_streaming:
-        return Response(_stream_chat_response(model, req_obj), mimetype='text/event-stream')
+        if has_tools:
+            return Response(_stream_chat_response_with_tools(model, req_obj, model_base), mimetype='text/event-stream')
+        else:
+            return Response(_stream_chat_response(model, req_obj), mimetype='text/event-stream')
     else:
         response = requests.post(get_api_url(model, 'chat'), json=req_obj)
 
@@ -292,7 +333,12 @@ def chat_completions():
         json_response = response.json()
         text = json_response.get("response", "")
         logging.debug(f"Response Text {text}")
-        return jsonify(_static_chat_response(text, model_base))
+        
+        # Process tool calls in response if present
+        if has_tools:
+            return jsonify(_static_chat_response_with_tools(text, model_base, json_response))
+        else:
+            return jsonify(_static_chat_response(text, model_base))
 
 
 def _stream_chat_response(model, req_obj):
@@ -455,6 +501,169 @@ def convert_multimodal_to_text(messages, model_base):
         processed_messages.append(processed_message)
 
     return processed_messages
+
+
+def _static_chat_response_with_tools(text, model_base, json_response):
+    """
+    Generate static chat response with tool call processing.
+    """
+    # Initialize tool interceptor
+    tool_interceptor = ToolInterceptor()
+    
+    # Determine model family for processing
+    model_family = determine_model_family(model_base)
+    
+    # Process response to extract tool calls
+    tool_calls, clean_text = tool_interceptor.process(
+        json_response.get("response", text), 
+        model_family
+    )
+    
+    # Determine finish reason
+    finish_reason = "tool_calls" if tool_calls else "stop"
+    
+    # Convert tool calls to OpenAI format if present
+    openai_tool_calls = None
+    if tool_calls:
+        openai_tool_calls = tool_calls_to_openai(tool_calls, api_format="chat_completion")
+    
+    return {
+        "id": "argo",
+        "object": "chat.completion",
+        "created": int(datetime.datetime.now().timestamp()),
+        "model": model_base,
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": clean_text,
+                "tool_calls": openai_tool_calls,
+            },
+            "logprobs": None,
+            "finish_reason": finish_reason
+        }]
+    }
+
+
+def _fake_stream_response_with_tools(text, model, model_base):
+    """
+    Generate fake streaming response with tool call processing.
+    """
+    # Initialize tool interceptor
+    tool_interceptor = ToolInterceptor()
+    
+    # Determine model family for processing
+    model_family = determine_model_family(model_base)
+    
+    # Process response to extract tool calls
+    tool_calls, clean_text = tool_interceptor.process(text, model_family)
+    
+    # Start with role chunk
+    begin_chunk = {
+        "id": 'abc',
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.now().timestamp()),
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "delta": {'role': 'assistant', 'content': ''},
+            "logprobs": None,
+            "finish_reason": None
+        }]
+    }
+    yield f"data: {json.dumps(begin_chunk)}\n\n"
+    
+    # Send tool calls if present
+    if tool_calls:
+        for i, tool_call in enumerate(tool_calls):
+            tool_call_chunk = tool_calls_to_openai_stream(
+                tool_call, 
+                tc_index=i, 
+                api_format="chat_completion"
+            )
+            chunk = {
+                "id": 'abc',
+                "object": "chat.completion.chunk",
+                "created": int(datetime.datetime.now().timestamp()),
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "delta": {'tool_calls': [tool_call_chunk.model_dump()]},
+                    "logprobs": None,
+                    "finish_reason": None
+                }]
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+    
+    # Send text content if present
+    if clean_text:
+        content_chunk = {
+            "id": 'abc',
+            "object": "chat.completion.chunk",
+            "created": int(datetime.datetime.now().timestamp()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": {'content': clean_text},
+                "logprobs": None,
+                "finish_reason": None
+            }]
+        }
+        yield f"data: {json.dumps(content_chunk)}\n\n"
+    
+    # Send final chunk
+    finish_reason = "tool_calls" if tool_calls else "stop"
+    end_chunk = {
+        "id": 'argo',
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.now().timestamp()),
+        "model": model,
+        "system_fingerprint": "fp_44709d6fcb",
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "logprobs": None,
+            "finish_reason": finish_reason
+        }]
+    }
+    yield f"data: {json.dumps(end_chunk)}\n\n"
+    yield "data: [DONE]\n\n"
+
+
+def _stream_chat_response_with_tools(model, req_obj, model_base):
+    """
+    Generate streaming response with tool call processing.
+    Note: This is a placeholder for future real streaming tool support.
+    For now, it falls back to fake streaming.
+    """
+    # For now, we'll use the non-streaming endpoint and fake stream the result
+    # TODO: Implement real streaming tool support when Argo supports it
+    
+    response = requests.post(get_api_url(model, 'chat'), json=req_obj)
+    
+    if not response.ok:
+        # Return error in streaming format
+        error_chunk = {
+            "id": 'error',
+            "object": "chat.completion.chunk",
+            "created": int(datetime.datetime.now().timestamp()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": {'content': f"Error: {response.status_code} {response.reason}"},
+                "logprobs": None,
+                "finish_reason": "stop"
+            }]
+        }
+        yield f"data: {json.dumps(error_chunk)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+    
+    json_response = response.json()
+    text = json_response.get("response", "")
+    
+    # Use fake streaming with tool processing
+    yield from _fake_stream_response_with_tools(text, model, model_base)
 
 
 """
