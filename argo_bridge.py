@@ -540,6 +540,8 @@ def _static_chat_response_with_tools(text, model_base, json_response):
     openai_tool_calls = None
     if tool_calls:
         openai_tool_calls = tool_calls_to_openai(tool_calls, api_format="chat_completion")
+        # Convert Pydantic models to dictionaries for JSON serialization
+        openai_tool_calls = [tool_call.model_dump() for tool_call in openai_tool_calls]
     
     return {
         "id": "argo",
