@@ -208,3 +208,60 @@ def test_conversation_with_tools(openai_client, mocker):
     final_message = response2.choices[0].message
     assert final_message.content is not None
     assert "Sunny" in final_message.content
+
+
+def test_streaming_with_text_and_tool_call(openai_client, mocker):
+    """Test streaming response with both text and a tool call."""
+    # Mock the streaming response
+    mock_stream = mocker.MagicMock()
+    
+    # Define the chunks to be returned by the stream
+    # Create tool call function mock
+    tool_call_function = mocker.Mock()
+    tool_call_function.name = "get_weather"
+    tool_call_function.arguments = '{"location": "Chicago"}'
+    
+    chunks = [
+        # 1. Role chunk
+        mocker.Mock(choices=[mocker.Mock(delta=mocker.Mock(role='assistant', content=None, tool_calls=None))]),
+        # 2. Text content chunk
+        mocker.Mock(choices=[mocker.Mock(delta=mocker.Mock(content="Of course, I can help with that.", tool_calls=None))]),
+        # 3. Tool call chunk
+        mocker.Mock(choices=[mocker.Mock(delta=mocker.Mock(content=None, tool_calls=[
+            mocker.Mock(
+                id="call_456",
+                function=tool_call_function
+            )
+        ]))]),
+        # 4. Final empty chunk
+        mocker.Mock(choices=[mocker.Mock(delta=mocker.Mock(content=None, tool_calls=None), finish_reason="tool_calls")])
+    ]
+    
+    mock_stream.__iter__.return_value = iter(chunks)
+    mocker.patch.object(openai_client.chat.completions, 'create', return_value=mock_stream)
+
+    # Make the streaming request
+    stream = openai_client.chat.completions.create(
+        model="claudesonnet35v2",
+        messages=[{"role": "user", "content": "What is the weather in Chicago?"}],
+        tools=TOOLS,
+        stream=True,
+    )
+
+    # Process the stream and check the order
+    received_text = None
+    received_tool_call = None
+    
+    for chunk in stream:
+        if chunk.choices[0].delta.content:
+            assert received_tool_call is None, "Text chunk received after tool_call chunk"
+            received_text = chunk.choices[0].delta.content
+        
+        if chunk.choices[0].delta.tool_calls:
+            assert received_text is not None, "Tool_call chunk received before text chunk"
+            received_tool_call = chunk.choices[0].delta.tool_calls[0]
+
+    # Final assertions
+    assert received_text == "Of course, I can help with that."
+    assert received_tool_call.function.name == "get_weather"
+    assert "Chicago" in received_tool_call.function.arguments

@@ -324,7 +324,10 @@ def chat_completions():
         # Process tool calls in response if present
         if has_tools:
             log_response_summary("success", model_base, "tool_calls")
-            return Response(_fake_stream_response_with_tools(text, model, model_base), mimetype='text/event-stream')
+            return Response(
+                _fake_stream_response_with_tools(json_response, model, model_base), 
+                mimetype='text/event-stream'
+            )
         else:
             log_response_summary("success", model_base, "stop")
             return Response(_fake_stream_response(text, model), mimetype='text/event-stream')
@@ -563,7 +566,7 @@ def _static_chat_response_with_tools(text, model_base, json_response):
     }
 
 
-def _fake_stream_response_with_tools(text, model, model_base):
+def _fake_stream_response_with_tools(json_response, model, model_base):
     """
     Generate fake streaming response with tool call processing.
     """
@@ -574,7 +577,10 @@ def _fake_stream_response_with_tools(text, model, model_base):
     model_family = determine_model_family(model_base)
     
     # Process response to extract tool calls
-    tool_calls, clean_text = tool_interceptor.process(text, model_family)
+    tool_calls, clean_text = tool_interceptor.process(
+        json_response, 
+        model_family
+    )
     
     # Start with role chunk
     begin_chunk = {
@@ -590,6 +596,22 @@ def _fake_stream_response_with_tools(text, model, model_base):
         }]
     }
     yield f"data: {json.dumps(begin_chunk)}\n\n"
+    
+    # Send text content if present
+    if clean_text:
+        content_chunk = {
+            "id": 'abc',
+            "object": "chat.completion.chunk",
+            "created": int(datetime.datetime.now().timestamp()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": {'content': clean_text},
+                "logprobs": None,
+                "finish_reason": None
+            }]
+        }
+        yield f"data: {json.dumps(content_chunk)}\n\n"
     
     # Send tool calls if present
     if tool_calls:
@@ -612,22 +634,6 @@ def _fake_stream_response_with_tools(text, model, model_base):
                 }]
             }
             yield f"data: {json.dumps(chunk)}\n\n"
-    
-    # Send text content if present
-    if clean_text:
-        content_chunk = {
-            "id": 'abc',
-            "object": "chat.completion.chunk",
-            "created": int(datetime.datetime.now().timestamp()),
-            "model": model,
-            "choices": [{
-                "index": 0,
-                "delta": {'content': clean_text},
-                "logprobs": None,
-                "finish_reason": None
-            }]
-        }
-        yield f"data: {json.dumps(content_chunk)}\n\n"
     
     # Send final chunk
     finish_reason = "tool_calls" if tool_calls else "stop"
