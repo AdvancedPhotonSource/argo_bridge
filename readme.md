@@ -5,7 +5,25 @@ This project provides a compatibility layer that transforms OpenAI-style API req
 
 ## Downstream Integration
 
-Several tools have been tested with the bridge, including IDE integrations, web UI's, and python libraries. Setup guides for these tools tools are located in the [downstream_config.md](downstream_config.md). 
+Several tools have been tested with the bridge, including IDE integrations, web UI's, and python libraries. Setup guides for these tools tools are located in the [downstream_config.md](downstream_config.md).
+
+## Features
+
+### Tool Calling
+
+The bridge supports comprehensive tool calling, including:
+- **Native Tool Calling**: For providers like OpenAI, Anthropic, and Google.
+- **Prompt-Based Fallback**: For models without native tool support.
+- **Streaming and Non-Streaming**: Support for both modes.
+
+Tool calling is integrated automatically. Simply include `tools` and `tool_choice` in your API requests.
+
+### Logging
+
+The server uses a configurable logging system with separate levels for console and file output.
+- **Default**: `WARNING` on console, `INFO` to `log_bridge.log`.
+- **Verbose Mode**: Set `ARGO_VERBOSE=true` for `DEBUG` level logging.
+- **Customization**: Use environment variables like `ARGO_CONSOLE_LOG_LEVEL` and `ARGO_FILE_LOG_LEVEL` to control verbosity.
 
 
 ## Setup
