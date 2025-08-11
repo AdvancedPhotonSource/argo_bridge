@@ -1,59 +1,46 @@
 """
-Tool Calls Module
+Tool Calling Module
+===================
 
-This module provides comprehensive tool calling functionality for the argo_bridge project,
-supporting both native tool calling and prompt-based fallback approaches.
+This module provides a comprehensive toolkit for handling tool calls in Large Language Models (LLMs).
+It offers a suite of utilities for converting tool calls, definitions, and choices between different
+API formats, including OpenAI, Anthropic, and Google Gemini.
 
-Main Components:
-- handler: Universal middleware classes for tool call conversion
-- input_handle: Input processing and tool format conversion
-- output_handle: Output processing and tool call extraction
-- utils: Utility functions for model detection and ID generation
-- tool_prompts: Prompt templates for different model families
+Core functionalities include:
+- Universal middleware for seamless conversion of tool-related data structures.
+- Robust input and output handling for both native and prompt-based tool calling.
+- Pydantic-based type definitions for clear, validated data models.
 
-Usage:
-    from tool_calls import handle_tools, ToolInterceptor
-    
-    # Process input with tools
-    processed_data = handle_tools(request_data, native_tools=True)
-    
-    # Process output with tool calls
+Key Classes and Functions:
+- `ToolCall`: A universal representation of a tool call.
+- `Tool`: A universal representation of a tool definition.
+- `ToolChoice`: A universal representation of a tool choice strategy.
+- `handle_tools`: A function to process and convert incoming tool-related requests.
+- `ToolInterceptor`: A class to process and extract tool calls from model responses.
+
+Usage Example:
+    from tool_calls import Tool, ToolCall, handle_tools, ToolInterceptor
+
+    # Define a tool
+    my_tool = Tool(name="get_weather", description="Fetches weather data.", parameters={...})
+
+    # Process an incoming request
+    processed_request = handle_tools(request_data)
+
+    # Intercept and process a model's response
     interceptor = ToolInterceptor()
-    tool_calls, text = interceptor.process(response_content, model_family="openai")
+    tool_calls, text_content = interceptor.process(response_content)
 """
 
-from .handler import Tool, ToolCall, ToolChoice, NamedTool
-from .input_handle import handle_tools, build_tool_prompt
-from .output_handle import (
-    ToolInterceptor,
-    tool_calls_to_openai,
-    tool_calls_to_openai_stream,
-    chat_completion_to_response_tool_call,
-)
-from .utils import determine_model_family, generate_id, validate_tool_choice, API_FORMATS
-from .tool_prompts import get_prompt_skeleton
+from .handler import Tool, ToolCall, ToolChoice
+from .input_handle import handle_tools
+from .output_handle import ToolInterceptor
+from .types import *
 
 __all__ = [
-    # Core middleware classes
     "Tool",
-    "ToolCall", 
+    "ToolCall",
     "ToolChoice",
-    "NamedTool",
-    
-    # Input processing
     "handle_tools",
-    "build_tool_prompt",
-    
-    # Output processing
     "ToolInterceptor",
-    "tool_calls_to_openai",
-    "tool_calls_to_openai_stream",
-    "chat_completion_to_response_tool_call",
-    
-    # Utilities
-    "determine_model_family",
-    "generate_id",
-    "validate_tool_choice",
-    "API_FORMATS",
-    "get_prompt_skeleton",
 ]

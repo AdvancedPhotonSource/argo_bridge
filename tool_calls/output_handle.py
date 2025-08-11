@@ -13,7 +13,7 @@ from typing import (
 
 from pydantic import ValidationError
 
-from tool_types.function_call import (
+from .types import (
     ChatCompletionMessageToolCall,
     ChoiceDeltaToolCall,
     ChoiceDeltaToolCallFunction,

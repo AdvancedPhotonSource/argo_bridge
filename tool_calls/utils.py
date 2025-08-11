@@ -4,7 +4,7 @@ from typing import Any, Dict, Literal, Union
 
 from pydantic import ValidationError
 
-from tool_types.function_call import ChatCompletionNamedToolChoiceParam
+from .types import ChatCompletionNamedToolChoiceParam
 
 API_FORMATS = Literal[
     "openai",  # old default, alias to openai-chatcompletion

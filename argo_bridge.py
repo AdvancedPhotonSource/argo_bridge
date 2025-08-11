@@ -11,7 +11,9 @@ import httpx
 from functools import wraps
 
 # Import tool calling functionality
-from tool_calls import handle_tools, ToolInterceptor, tool_calls_to_openai, tool_calls_to_openai_stream, determine_model_family
+from tool_calls import handle_tools, ToolInterceptor
+from tool_calls.output_handle import tool_calls_to_openai, tool_calls_to_openai_stream
+from tool_calls.utils import determine_model_family
 
 # Import centralized logging
 from logging_config import get_logger, log_request_summary, log_response_summary, log_tool_processing, log_data_verbose

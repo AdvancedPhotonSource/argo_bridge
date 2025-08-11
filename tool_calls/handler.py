@@ -32,7 +32,7 @@ from typing import Any, Dict, Literal, Union
 
 from pydantic import BaseModel
 
-from tool_types.function_call import (
+from .types import (
     ChatCompletionMessageToolCall,
     ChatCompletionNamedToolChoiceParam,
     ChatCompletionToolParam,
