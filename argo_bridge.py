@@ -1010,7 +1010,7 @@ def check_argo_connection():
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run the Flask server.')
-    parser.add_argument('--username', type=str, default='argo_bridge', help='Username for the API requests')
+    parser.add_argument('-u', '--username', required=True, type=str, help='Username for the API requests')
     parser.add_argument('--port', type=int, default=7285, help='Port number to run the server on')
     parser.add_argument('--dlog', action='store_true', help='Enable debug-level logging')
     return parser.parse_args()
@@ -1018,6 +1018,7 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+    BRIDGE_USER = args.username
     debug_enabled = args.dlog
     logging.basicConfig(
         filename=ANL_DEBUG_FP,
