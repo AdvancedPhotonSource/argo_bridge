@@ -379,5 +379,112 @@ class TestUrlSwitching(unittest.TestCase):
             'https://apps.inside.anl.gov/argoapi/api/v1/resource/embed/'
         )
 
+class TestErrorPassthrough(unittest.TestCase):
+    """Tests that Argo JSON error bodies are proxied back to clients."""
+
+    def setUp(self):
+        self.app = app.test_client()
+        self.app.testing = True
+
+    @patch('argo_bridge.requests.post')
+    def test_chat_error_json_passthrough(self, mock_post):
+        """Chat: 400 with JSON body should be returned as-is with 400."""
+        mock_response = MagicMock()
+        mock_response.ok = False
+        mock_response.status_code = 400
+        mock_response.reason = "Bad Request"
+        body = {"error": {"message": "invalid input"}}
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_response.text = json.dumps(body)
+        mock_response.json.return_value = body
+        mock_post.return_value = mock_response
+
+        test_data = {
+            "model": "gpt4o",
+            "messages": [{"role": "user", "content": "Hello"}]
+        }
+        response = self.app.post('/chat/completions',
+                                 data=json.dumps(test_data),
+                                 content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.data)
+        self.assertEqual(data, body)
+
+    @patch('argo_bridge.requests.post')
+    def test_chat_error_nonjson_fallback(self, mock_post):
+        """Chat: non-JSON error should return generic 500 error payload."""
+        mock_response = MagicMock()
+        mock_response.ok = False
+        mock_response.status_code = 400
+        mock_response.reason = "Bad Request"
+        mock_response.headers = {"Content-Type": "text/plain"}
+        mock_response.text = "Some text error"
+        mock_response.json.side_effect = ValueError("No JSON")
+        mock_post.return_value = mock_response
+
+        test_data = {
+            "model": "gpt4o",
+            "messages": [{"role": "user", "content": "Hello"}]
+        }
+        response = self.app.post('/chat/completions',
+                                 data=json.dumps(test_data),
+                                 content_type='application/json')
+
+        self.assertEqual(response.status_code, 500)
+        data = json.loads(response.data)
+        self.assertIn("Internal API error: 400 Bad Request", data["error"]["message"])
+
+    @patch('argo_bridge.requests.post')
+    def test_completions_error_json_passthrough(self, mock_post):
+        """Completions: 400 with JSON body should be returned as-is with 400."""
+        mock_response = MagicMock()
+        mock_response.ok = False
+        mock_response.status_code = 400
+        mock_response.reason = "Bad Request"
+        body = {"error": {"message": "bad prompt"}}
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_response.text = json.dumps(body)
+        mock_response.json.return_value = body
+        mock_post.return_value = mock_response
+
+        test_data = {
+            "model": "gpt4o",
+            "prompt": "Complete this sentence"
+        }
+        response = self.app.post('/completions',
+                                 data=json.dumps(test_data),
+                                 content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.data)
+        self.assertEqual(data, body)
+
+    @patch('argo_bridge.requests.post')
+    def test_embeddings_error_json_passthrough(self, mock_post):
+        """Embeddings: 400 with JSON body should be returned as-is with 400."""
+        mock_response = MagicMock()
+        mock_response.ok = False
+        mock_response.status_code = 400
+        mock_response.reason = "Bad Request"
+        body = {"error": {"message": "invalid embedding input"}}
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_response.text = json.dumps(body)
+        mock_response.json.return_value = body
+        mock_post.return_value = mock_response
+
+        test_data = {
+            "model": "text-embedding-3-small",
+            "input": ["foo"]
+        }
+        response = self.app.post('/embeddings',
+                                 data=json.dumps(test_data),
+                                 content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.data)
+        self.assertEqual(data, body)
+
+
 if __name__ == '__main__':
     unittest.main()

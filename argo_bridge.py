@@ -223,6 +223,76 @@ def get_api_url(model, endpoint_type):
     # Return the URL from the mapping
     return URL_MAPPING[env][endpoint_type]
 
+# ================================
+# Error Proxy Helpers
+# ================================
+
+class ArgoAPIError(Exception):
+    def __init__(self, response):
+        self.status_code = getattr(response, "status_code", 500)
+        self.reason = getattr(response, "reason", "Unknown Error")
+        self.body = _try_get_json_from_response(response)
+        self.is_json = isinstance(self.body, (dict, list))
+        super().__init__(f"Argo API error {self.status_code}: {self.reason}")
+
+def _try_get_json_from_response(response):
+    """
+    Safely attempt to extract a JSON object from a requests.Response-like object.
+    Returns dict/list if successful, otherwise None.
+    """
+    # Try based on Content-Type and text
+    try:
+        content_type = getattr(response, "headers", {}).get("Content-Type", "")
+    except Exception:
+        content_type = ""
+    if isinstance(content_type, str) and "application/json" in content_type.lower():
+        try:
+            text = getattr(response, "text", "")
+            if isinstance(text, str) and text:
+                parsed = json.loads(text)
+                if isinstance(parsed, (dict, list)):
+                    return parsed
+        except Exception:
+            pass
+    # Try response.json()
+    try:
+        parsed = response.json()
+        if isinstance(parsed, (dict, list)):
+            return parsed
+    except Exception:
+        pass
+    # Try parse text as JSON regardless
+    try:
+        text = getattr(response, "text", "")
+        if isinstance(text, str) and text:
+            parsed = json.loads(text)
+            if isinstance(parsed, (dict, list)):
+                return parsed
+    except Exception:
+        pass
+    return None
+
+def _proxy_argo_error_response(response, logger, fallback_status=500):
+    """
+    If Argo returns a JSON error body (e.g., on 400), pass it through with the original status.
+    Otherwise, return a generic error with fallback_status.
+    """
+    body = _try_get_json_from_response(response)
+    if body is not None:
+        logger.error(f"Argo API error body (proxied): {body}")
+        try:
+            status = int(getattr(response, "status_code", fallback_status))
+        except Exception:
+            status = fallback_status
+        return jsonify(body), status
+
+    # Non-JSON body fallback
+    text = getattr(response, "text", "")
+    logger.error(f"Argo API non-JSON error body: {text}")
+    return jsonify({"error": {
+        "message": f"Internal API error: {getattr(response, 'status_code', 'unknown')} {getattr(response, 'reason', '')}".strip()
+    }}), fallback_status
+
 """
 =================================
     Chat Endpoint
@@ -320,9 +390,7 @@ def chat_completions():
         if not response.ok:
             logger.error(f"Argo API error: {response.status_code} {response.reason}")
             log_response_summary("error", model_base)
-            return jsonify({"error": {
-                "message": f"Internal API error: {response.status_code} {response.reason}"
-            }}), 500
+            return _proxy_argo_error_response(response, logger)
 
         json_response = response.json()
         text = json_response.get("response", "")
@@ -350,9 +418,7 @@ def chat_completions():
         if not response.ok:
             logger.error(f"Argo API error: {response.status_code} {response.reason}")
             log_response_summary("error", model_base)
-            return jsonify({"error": {
-                "message": f"Internal API error: {response.status_code} {response.reason}"
-            }}), 500
+            return _proxy_argo_error_response(response, logger)
 
         json_response = response.json()
         text = json_response.get("response", "")
@@ -694,7 +760,7 @@ def _stream_chat_response_with_tools(model, req_obj, model_base):
     text = json_response.get("response", "")
     
     # Use fake streaming with tool processing
-    yield from _fake_stream_response_with_tools(text, model, model_base)
+    yield from _fake_stream_response_with_tools(json_response, model, model_base)
 
 
 """
@@ -744,9 +810,7 @@ def completions():
     if not response.ok:
         logger.error(f"Argo API error: {response.status_code} {response.reason}")
         log_response_summary("error", model_base)
-        return jsonify({"error": {
-            "message": f"Internal API error: {response.status_code} {response.reason}"
-        }}), 500
+        return _proxy_argo_error_response(response, logger)
 
     json_response = response.json()
     text = json_response.get("response", "")
@@ -822,6 +886,15 @@ def embeddings():
     
     try:
         embedding_vectors = _get_embeddings_from_argo(input_data, model, user)
+    except ArgoAPIError as e:
+        logger.error(f"Embedding API error: {e.status_code} {e.reason}")
+        log_response_summary("error", model_base)
+        if e.is_json:
+            return jsonify(e.body), e.status_code
+        else:
+            return jsonify({"error": {
+                "message": f"Embedding API error: {e.status_code} {e.reason}"
+            }}), e.status_code
     except Exception as e:
         logger.error(f"Embedding processing failed: {e}")
         log_response_summary("error", model_base)
@@ -871,7 +944,7 @@ def _get_embeddings_from_argo(texts, model, user=BRIDGE_USER):
 
         if not response.ok:
             logger.error(f"Argo embedding API error: {response.status_code} {response.reason}")
-            raise Exception(f"Embedding API error: {response.status_code} {response.reason}")
+            raise ArgoAPIError(response)
 
         embedding_response = response.json()
         batch_embeddings = embedding_response.get("embedding", [])
