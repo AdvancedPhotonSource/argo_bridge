@@ -29,9 +29,10 @@ URL: https://github.com/continuedev/continue
 URL: https://github.com/cline/cline
 
 1. Click the cog wheel in the top right
-2. Under each mode select "LM Studio" as the API provider
+2. Under each mode select "OpenAI-comptible" as the API provider
 3. Set the base url to http://localhost:7285
-4. Enter your preferred model into the Model ID (o3-mini is a decent starting point)
+4. Enter any string for the API key
+5. Enter your preferred model into the Model ID (o3-mini is a decent starting point)
 
 # Open-Webui
 
