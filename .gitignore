@@ -7,3 +7,6 @@ myserver.crt
 myserver.key
 sandbox.py
 memory-bank
+.claude/
+.vscode/
+.DS_Store
