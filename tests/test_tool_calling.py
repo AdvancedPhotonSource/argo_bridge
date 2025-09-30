@@ -1,7 +1,19 @@
 import json
+import os
+import sys
+
 import pytest
 import requests
 from openai import OpenAI
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from tool_calls import ToolCall
+from tool_calls.output_handle import (
+    ToolInterceptor,
+    tool_calls_to_openai,
+    tool_calls_to_openai_stream,
+)
 
 # Configuration
 BRIDGE_URL = "http://localhost:7285"  # Default argo_bridge URL
@@ -208,6 +220,216 @@ def test_conversation_with_tools(openai_client, mocker):
     final_message = response2.choices[0].message
     assert final_message.content is not None
     assert "Sunny" in final_message.content
+
+
+def test_tool_interceptor_openai_nested_response():
+    interceptor = ToolInterceptor()
+    response_payload = {
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "call_test",
+                "type": "function",
+                "function": {
+                    "name": "add",
+                    "arguments": "{\"a\":8,\"b\":5}"
+                }
+            }
+        ]
+    }
+
+    tool_calls, clean_text = interceptor.process(response_payload, model_family="openai")
+
+    assert clean_text == ""
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0].name == "add"
+    assert json.loads(tool_calls[0].arguments) == {"a": 8, "b": 5}
+
+
+def test_tool_interceptor_google_object_response():
+    interceptor = ToolInterceptor()
+    response_payload = {
+        "content": None,
+        "tool_calls": {
+            "id": None,
+            "name": "add",
+            "args": {"a": 8, "b": 5}
+        }
+    }
+
+    tool_calls, clean_text = interceptor.process(response_payload, model_family="google")
+
+    assert clean_text == ""
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+    assert tool_calls[0].name == "add"
+    assert json.loads(tool_calls[0].arguments) == {"a": 8, "b": 5}
+
+
+def test_tool_interceptor_anthropic_with_text():
+    interceptor = ToolInterceptor()
+    response_payload = {
+        "response": {
+            "content": "I'll call the math tool now.",
+            "tool_calls": [
+                {
+                    "id": "toolu_demo",
+                    "name": "calculate",
+                    "type": "tool_use",
+                    "input": {"expression": "2+2"}
+                }
+            ]
+        }
+    }
+
+    tool_calls, clean_text = interceptor.process(response_payload, model_family="anthropic")
+
+    assert clean_text == "I'll call the math tool now."
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].name == "calculate"
+    assert json.loads(tool_calls[0].arguments) == {"expression": "2+2"}
+
+
+def test_tool_interceptor_multiple_calls_mixed_content():
+    interceptor = ToolInterceptor()
+    response_payload = {
+        "response": {
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": '{"location":"Paris"}'
+                    }
+                },
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {
+                        "name": "calculate",
+                        "arguments": '{"expression":"3*7"}'
+                    }
+                }
+            ]
+        }
+    }
+
+    tool_calls, clean_text = interceptor.process(response_payload, model_family="openai")
+
+    assert clean_text == ""
+    assert tool_calls is not None and len(tool_calls) == 2
+    assert [tc.name for tc in tool_calls] == ["get_weather", "calculate"]
+
+
+def test_tool_interceptor_handles_missing_tool_calls():
+    interceptor = ToolInterceptor()
+    response_payload = {"response": {"content": "All done."}}
+
+    tool_calls, clean_text = interceptor.process(response_payload, model_family="openai")
+
+    assert clean_text == "All done."
+    assert tool_calls is None
+
+
+def test_tool_interceptor_ignores_malformed_entry(caplog):
+    interceptor = ToolInterceptor()
+    caplog.set_level("WARNING")
+
+    response_payload = {
+        "response": {
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_good",
+                    "type": "function",
+                    "function": {"name": "add", "arguments": "{\"a\":1}"}
+                },
+                {
+                    "id": "call_bad",
+                    "type": "function",
+                    "function": "not-a-dict"
+                }
+            ]
+        }
+    }
+
+    tool_calls, clean_text = interceptor.process(response_payload, model_family="openai")
+
+    assert clean_text == ""
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].name == "add"
+    assert any("Failed" in message for message in caplog.messages)
+
+
+@pytest.mark.parametrize(
+    "api_format",
+    ["chat_completion", "response"],
+)
+def test_tool_calls_to_openai_conversion(api_format):
+    calls = [
+        ToolCall(id="call1", name="add", arguments="{\"a\":1}"),
+        ToolCall(id="call2", name="subtract", arguments="{\"a\":5}"),
+    ]
+
+    converted = tool_calls_to_openai(calls, api_format=api_format)
+
+    assert len(converted) == 2
+    if api_format == "chat_completion":
+        assert converted[0].function.name == "add"
+    else:
+        assert converted[0].name == "add"
+
+
+def test_tool_calls_to_openai_stream_conversion():
+    call = ToolCall(id="call1", name="add", arguments="{\"a\":1}")
+
+    result = tool_calls_to_openai_stream(call, tc_index=3)
+
+    assert result.index == 3
+    assert result.function.name == "add"
+
+
+def test_tool_calls_to_openai_stream_invalid_type():
+    with pytest.raises(ValueError):
+        tool_calls_to_openai_stream(123, tc_index=0)
+
+
+def test_tool_interceptor_google_non_dict_tool_calls():
+    interceptor = ToolInterceptor()
+    response_payload = {
+        "response": {
+            "content": None,
+            "tool_calls": [
+                {
+                    "name": "lookup",
+                    "args": {"value": "x"},
+                },
+                "unexpected"
+            ]
+        }
+    }
+
+    tool_calls, clean_text = interceptor.process(response_payload, model_family="google")
+
+    assert clean_text == ""
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].name == "lookup"
+
+
+def test_tool_interceptor_prompt_based_parsing():
+    interceptor = ToolInterceptor()
+
+    text = "Pre text<tool_call>{\"name\":\"add\",\"arguments\":{\"a\":1}}</tool_call>post text"
+
+    tool_calls, clean_text = interceptor.process(text, model_family="openai")
+
+    assert clean_text.strip() == "Pre textpost text"
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].name == "add"
+
 
 
 def test_streaming_with_text_and_tool_call(openai_client, mocker):

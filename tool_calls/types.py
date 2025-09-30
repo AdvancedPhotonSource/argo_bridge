@@ -12,9 +12,9 @@ Sections:
     - Google Gemini Types (TODO)
 """
 
-from typing import Dict, List, Literal, Optional, TypeAlias, Union
+from typing import Any, Dict, List, Literal, Optional, TypeAlias, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 # ======================================================================
 # 1. OPENAI TYPES (CHAT COMPLETION & RESPONSES API)
@@ -287,6 +287,17 @@ class ToolUseBlock(BaseModel):
 
 
 # ======================================================================
-# 3. GOOGLE GEMINI TYPES (TODO)
+# 3. GOOGLE GEMINI TYPES
 # ======================================================================
-# Add Google Gemini-compatible function call types here...
+
+
+class GeminiFunctionCall(BaseModel):
+    """Minimal representation of a Gemini function call."""
+
+    id: Optional[str] = None
+    name: str
+    args: Dict[str, Any] = Field(default_factory=dict)
+    type: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
