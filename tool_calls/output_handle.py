@@ -164,19 +164,48 @@ class ToolInterceptor:
         Returns:
             Tuple of (list of ToolCall objects or None, text content)
         """
-        content = response_data.get("content", "")
-        tool_calls_data = response_data.get("tool_calls", [])
+        response_payload = response_data.get("response", response_data)
+
+        if not isinstance(response_payload, dict):
+            logger.debug("OpenAI response payload is not a dict; returning string content")
+            content = response_payload if isinstance(response_payload, str) else str(response_payload)
+            return None, content
+
+        content = response_payload.get("content")
+        if content is None:
+            content = ""
+
+        tool_calls_data = response_payload.get("tool_calls", [])
+
+        if isinstance(tool_calls_data, dict):
+            tool_calls_data = [tool_calls_data]
+        elif tool_calls_data is None:
+            tool_calls_data = []
+        elif not isinstance(tool_calls_data, list):
+            logger.debug(
+                "Unexpected tool_calls payload type for OpenAI: %s",
+                type(tool_calls_data),
+            )
+            tool_calls_data = []
 
         # Convert tool calls to ToolCall objects
         tool_calls = None
         if tool_calls_data:
             tool_calls = []
             for tool_call_dict in tool_calls_data:
-                # Use ToolCall.from_entry to convert from OpenAI format
-                tool_call = ToolCall.from_entry(
-                    tool_call_dict, api_format="openai-chatcompletion"
-                )
+                try:
+                    tool_call = ToolCall.from_entry(
+                        tool_call_dict, api_format="openai-chatcompletion"
+                    )
+                except Exception as exc:  # noqa: BLE001 - allow broad catch for logging
+                    logger.warning(
+                        "Failed to parse OpenAI tool call entry: %s", exc, exc_info=True
+                    )
+                    continue
                 tool_calls.append(tool_call)
+
+            if not tool_calls:
+                tool_calls = None
 
         return tool_calls, content
 
@@ -247,9 +276,42 @@ class ToolInterceptor:
         Returns:
             Tuple of (list of ToolCall objects or None, text content)
         """
-        # Placeholder implementation - to be implemented later
-        logger.warning("Google native tool calling not implemented yet, falling back to OpenAI format")
-        raise NotImplementedError("Google native tool calling is not yet implemented. Please implement Google-specific tool calling format processing.")
+        response_payload = response_data.get("response", response_data)
+
+        if not isinstance(response_payload, dict):
+            logger.debug("Google response payload is not a dict; returning string content")
+            content = response_payload if isinstance(response_payload, str) else str(response_payload)
+            return None, content
+
+        text_content = response_payload.get("content")
+        if text_content is None:
+            text_content = ""
+
+        gemini_tool_calls = response_payload.get("tool_calls")
+
+        tool_calls = None
+        if gemini_tool_calls:
+            if isinstance(gemini_tool_calls, dict):
+                gemini_tool_calls = [gemini_tool_calls]
+            elif not isinstance(gemini_tool_calls, list):
+                logger.debug(
+                    "Unexpected tool_calls payload type for Google: %s",
+                    type(gemini_tool_calls),
+                )
+                gemini_tool_calls = [gemini_tool_calls]
+
+            tool_calls = []
+            for gemini_tool_call in gemini_tool_calls:
+                try:
+                    tool_call = ToolCall.from_entry(gemini_tool_call, api_format="google")
+                    tool_calls.append(tool_call)
+                except Exception as exc:
+                    logger.warning(f"Failed to parse Gemini tool call: {exc}")
+
+            if not tool_calls:
+                tool_calls = None
+
+        return tool_calls, text_content
 
 
 def chat_completion_to_response_tool_call(

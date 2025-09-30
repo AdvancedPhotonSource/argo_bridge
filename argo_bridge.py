@@ -122,6 +122,34 @@ URL_MAPPING = {
     }
 }
 
+
+def _extract_response_payload(response_obj):
+    """Return the nested response payload if present."""
+    if isinstance(response_obj, dict) and "response" in response_obj:
+        return response_obj["response"]
+    return response_obj
+
+
+def _extract_response_text(response_obj):
+    """Extract textual content from an Argo response object."""
+    payload = _extract_response_payload(response_obj)
+
+    if isinstance(payload, dict):
+        content = payload.get("content")
+        if content is None:
+            return ""
+        if isinstance(content, (dict, list)):
+            try:
+                return json.dumps(content)
+            except TypeError:
+                return str(content)
+        return content
+
+    if payload is None:
+        return ""
+
+    return payload if isinstance(payload, str) else str(payload)
+
 # Define which models use which environment
 MODEL_ENV = {
     # Models using production environment
@@ -395,7 +423,7 @@ def chat_completions():
             return _proxy_argo_error_response(response, logger)
 
         json_response = response.json()
-        text = json_response.get("response", "")
+        text = _extract_response_text(json_response)
         log_data_verbose("Response text", text)
         
         # Process tool calls in response if present
@@ -423,7 +451,7 @@ def chat_completions():
             return _proxy_argo_error_response(response, logger)
 
         json_response = response.json()
-        text = json_response.get("response", "")
+        text = _extract_response_text(json_response)
         log_data_verbose("Response text", text)
         
         # Process tool calls in response if present
@@ -608,10 +636,15 @@ def _static_chat_response_with_tools(text, model_base, json_response):
     model_family = determine_model_family(model_base)
     
     # Process response to extract tool calls
+    response_payload = _extract_response_payload(json_response)
+
     tool_calls, clean_text = tool_interceptor.process(
-        json_response.get("response", text), 
+        response_payload,
         model_family
     )
+
+    if not clean_text:
+        clean_text = text
     
     # Determine finish reason
     finish_reason = "tool_calls" if tool_calls else "stop"
@@ -652,10 +685,15 @@ def _fake_stream_response_with_tools(json_response, model, model_base):
     model_family = determine_model_family(model_base)
     
     # Process response to extract tool calls
+    response_payload = _extract_response_payload(json_response)
+
     tool_calls, clean_text = tool_interceptor.process(
-        json_response, 
+        response_payload,
         model_family
     )
+
+    if not clean_text:
+        clean_text = _extract_response_text(response_payload)
     
     # Start with role chunk
     begin_chunk = {
@@ -759,7 +797,7 @@ def _stream_chat_response_with_tools(model, req_obj, model_base):
         return
     
     json_response = response.json()
-    text = json_response.get("response", "")
+    text = _extract_response_text(json_response)
     
     # Use fake streaming with tool processing
     yield from _fake_stream_response_with_tools(json_response, model, model_base)
@@ -815,7 +853,7 @@ def completions():
         return _proxy_argo_error_response(response, logger)
 
     json_response = response.json()
-    text = json_response.get("response", "")
+    text = _extract_response_text(json_response)
     log_data_verbose("Response text", text)
 
     if is_streaming:

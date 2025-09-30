@@ -48,8 +48,9 @@ from .types import (
     ToolChoiceToolParam,
     ToolParam,
     ToolUseBlock,
+    GeminiFunctionCall,
 )
-from .utils import API_FORMATS
+from .utils import API_FORMATS, generate_id
 
 
 class ToolCall(BaseModel):
@@ -120,8 +121,17 @@ class ToolCall(BaseModel):
                 arguments=arguments_str,
             )
         elif api_format == "google":
-            # TODO: Implement Google API format
-            raise NotImplementedError("Google API format is not supported yet.")
+            origin_tool_call = GeminiFunctionCall.model_validate(tool_call)
+            arguments = (
+                json.dumps(origin_tool_call.args)
+                if not isinstance(origin_tool_call.args, str)
+                else origin_tool_call.args
+            )
+            return cls(
+                id=origin_tool_call.id or generate_id(),
+                name=origin_tool_call.name,
+                arguments=arguments,
+            )
         else:
             raise ValueError(f"Unsupported API format: {api_format}")
 
@@ -168,7 +178,23 @@ class ToolCall(BaseModel):
             )
 
         elif api_format == "google":
-            raise NotImplementedError("Google API format is not supported yet.")
+            try:
+                parsed_args = (
+                    json.loads(self.arguments)
+                    if isinstance(self.arguments, str)
+                    else self.arguments
+                )
+            except json.JSONDecodeError:
+                parsed_args = self.arguments
+
+            if not isinstance(parsed_args, dict):
+                parsed_args = {"value": parsed_args}
+
+            tool_call = GeminiFunctionCall(
+                id=self.id,
+                name=self.name,
+                args=parsed_args,
+            )
 
         elif api_format == "general":
             return self
