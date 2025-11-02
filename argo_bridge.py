@@ -93,6 +93,7 @@ MODEL_MAPPING = {
     'claudeopus41': 'claudeopus41',
     'claudesonnet4': 'claudesonnet4',
     'claudesonnet45': 'claudesonnet45',
+    'claudehaiku45': 'claudehaiku45',
     'claudesonnet37': 'claudesonnet37',
     'claudesonnet35v2': 'claudesonnet35v2',
 }
@@ -173,6 +174,7 @@ MODEL_ENV = {
     'claudeopus41': 'dev',
     'claudesonnet4': 'dev',
     'claudesonnet45': 'dev',
+    'claudehaiku45': 'dev',
     'claudesonnet37': 'dev',
     'claudesonnet35v2': 'dev',
     'gpto3': 'dev',
