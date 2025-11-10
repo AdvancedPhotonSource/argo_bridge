@@ -115,12 +115,14 @@ URL_MAPPING = {
     # Production URLs
     'prod': {
         'chat': 'https://apps.inside.anl.gov/argoapi/api/v1/resource/chat/',
-        'embed': 'https://apps.inside.anl.gov/argoapi/api/v1/resource/embed/'
+        'embed': 'https://apps.inside.anl.gov/argoapi/api/v1/resource/embed/',
+        'streamchat': 'https://apps.inside.anl.gov/argoapi/api/v1/resource/streamchat/'
     },
     # Development URLs
     'dev': {
         'chat': 'https://apps-dev.inside.anl.gov/argoapi/api/v1/resource/chat/',
-        'embed': 'https://apps-dev.inside.anl.gov/argoapi/api/v1/resource/embed/'
+        'embed': 'https://apps-dev.inside.anl.gov/argoapi/api/v1/resource/embed/',
+        'streamchat': 'https://apps-dev.inside.anl.gov/argoapi/api/v1/resource/streamchat/'
     }
 }
 
@@ -188,9 +190,6 @@ MODEL_ENV = {
 }
 
 
-NON_STREAMING_MODELS = ['gemini25pro', 'gemini25flash',
-                        'claudeopus4', 'claudeopus41', 'claudesonnet4', 'claudesonnet45', 'claudesonnet37', 'claudesonnet35v2',
-                        'gpto3', 'gpto4mini', 'gpt41', 'gpt41mini', 'gpt41nano', 'gpt5', 'gpt5mini', 'gpt5nano']
 
 # For models endpoint
 MODELS = {
@@ -213,7 +212,6 @@ EMBED_ENV = 'prod'
 
 DEFAULT_MODEL = "gpt4o"
 BRIDGE_USER = "ARGO_BRIDGE"
-ANL_STREAM_URL = "https://apps-dev.inside.anl.gov/argoapi/api/v1/resource/streamchat/"
 ANL_DEBUG_FP = 'log_bridge.log'
 
 
@@ -242,13 +240,16 @@ def get_api_url(model, endpoint_type):
 
     Args:
         model (str): The model identifier
-        endpoint_type (str): Either 'chat' or 'embed'
+        endpoint_type (str): One of 'chat', 'embed', or 'streamchat'
 
     Returns:
         str: The appropriate API URL
     """
-    # For embedding models, use the default embedding environment
-    if model in EMBEDDING_MODEL_MAPPING.values():
+    # Streaming is currently available via the dev endpoint only
+    if endpoint_type == 'streamchat':
+        env = 'dev'
+    elif model in EMBEDDING_MODEL_MAPPING.values():
+        # For embedding models, use the default embedding environment
         env = EMBED_ENV
     else:
         # For chat models, look up the environment or default to prod
@@ -352,14 +353,8 @@ def chat_completions():
     log_request_summary("/v1/chat/completions", model_base, has_tools)
     log_data_verbose("Request data", data)
 
-    # Force non-streaming for specific models. Remove once Argo supports streaming for all models.
-    # TODO: TEMP Fake streaming for the new models until Argo supports it
+    # TODO: Fake streaming for tool calls until native streaming tool support is available
     is_fake_stream = False
-    if model_base in NON_STREAMING_MODELS and is_streaming:
-        is_fake_stream = True
-        logger.debug(f"Using fake streaming for {model_base}")
-    
-    # Also force fake streaming for tool calls until we implement streaming tool support
     if has_tools and is_streaming:
         is_fake_stream = True
         logger.debug("Using fake streaming for tool calls")
@@ -390,14 +385,6 @@ def chat_completions():
                 "message": f"Tool processing failed: {str(e)}"
             }}), 400
 
-    # Process multimodal content for Gemini models
-    if model_base.startswith('gemini'):
-        try:
-            data['messages'] = convert_multimodal_to_text(data['messages'], model_base)
-        except ValueError as e:
-            return jsonify({"error": {
-                "message": str(e)
-            }}), 400
 
     user = get_user_from_auth_header()
 
@@ -483,7 +470,7 @@ def _stream_chat_response(model, req_obj):
     yield f"data: {json.dumps(begin_chunk)}\n\n"
 
 
-    with httpx.stream("POST", ANL_STREAM_URL, json=req_obj, timeout=300.0)  as response:
+    with httpx.stream("POST", get_api_url(model, 'streamchat'), json=req_obj, timeout=300.0)  as response:
         for chunk in response.iter_bytes():
             if chunk:
                 text = chunk.decode(errors="replace")
@@ -578,6 +565,7 @@ def _fake_stream_response(text, model):
     }
     yield f"data: {json.dumps(end_chunk)}\n\n"
     yield "data: [DONE]\n\n"
+
 
 def convert_multimodal_to_text(messages, model_base):
     """
@@ -1023,7 +1011,7 @@ def check_argo_connection():
     logging.info("Testing Argo API connections")
 
     for env in ['prod', 'dev']:
-        for endpoint_type in ['chat', 'embed']:
+        for endpoint_type in ['chat', 'embed', 'streamchat']:
             url = URL_MAPPING[env][endpoint_type]
             try:
                 response = requests.head(url, timeout=5)
