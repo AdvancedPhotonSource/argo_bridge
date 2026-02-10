@@ -1,5 +1,12 @@
 # Argo API Bridge
 
+> [!IMPORTANT]  
+> This project is now archived. Argo officially supports OpenAI-compatible calls. See the internal argo docs for more information.
+> 
+> If you wish to still run a local program, for manipulation of API calls, tracking, etc argo-proxy is still being supported for the time being: https://github.com/Oaklight/argo-proxy
+
+
+
 This project provides a compatibility layer that transforms OpenAI-style API requests into Argonne National Lab's Argo API format. It supports chat completions, text completions, and embeddings endpoints.
 
 
